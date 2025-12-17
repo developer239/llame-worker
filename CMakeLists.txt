@@ -21,7 +21,7 @@ set(SOURCES
 add_library(${LIB_NAME} STATIC ${SOURCES})
 
 # Link libraries - mtmd is the multimodal library
-target_link_libraries(${LIB_NAME} PRIVATE
+target_link_libraries(${LIB_NAME} PUBLIC
         llama
         common
         mtmd
