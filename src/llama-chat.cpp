@@ -92,7 +92,11 @@ class LlamaChat::Impl {
   }
 
   bool InitializeMultiModal() {
+    std::cerr << "[DEBUG] InitializeMultiModal called" << std::endl;
+    std::cerr << "[DEBUG] multiModalPath: '" << storedModelParams.multiModalPath << "'" << std::endl;
+
     if (storedModelParams.multiModalPath.empty()) {
+      std::cerr << "[DEBUG] multiModalPath is empty, skipping" << std::endl;
       return false;
     }
 
@@ -114,6 +118,7 @@ class LlamaChat::Impl {
     }
 
     hasVisionSupport = mtmd_support_vision(mtmdCtx);
+    std::cerr << "[DEBUG] mtmdCtx initialized, hasVisionSupport: " << (hasVisionSupport ? "true" : "false") << std::endl;
     return true;
   }
 
@@ -180,6 +185,10 @@ class LlamaChat::Impl {
       const std::string& userMessage, const ImageInput& image,
       const std::function<void(const std::string&)>& callback
   ) {
+    std::cerr << "[DEBUG] PromptWithImage called" << std::endl;
+    std::cerr << "[DEBUG] mtmdCtx: " << (mtmdCtx ? "valid" : "null") << std::endl;
+    std::cerr << "[DEBUG] hasVisionSupport: " << (hasVisionSupport ? "true" : "false") << std::endl;
+
     if (!mtmdCtx || !hasVisionSupport) {
       std::cerr << "Warning: Multimodal support not available. "
                 << "Make sure to provide multiModalPath in ModelParams."
