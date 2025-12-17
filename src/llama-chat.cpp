@@ -190,6 +190,7 @@ class LlamaChat::Impl {
     }
 
     // Load the image
+    std::cerr << "[DEBUG] Loading image from: " << image.path << std::endl;
     mtmd_bitmap* bitmap = mtmd_helper_bitmap_init_from_file(
         mtmdCtx, image.path.c_str()
     );
@@ -198,15 +199,18 @@ class LlamaChat::Impl {
       Prompt(userMessage, callback);
       return;
     }
+    std::cerr << "[DEBUG] Image loaded successfully" << std::endl;
 
     // Build prompt with image marker
     std::string messageWithMarker = userMessage;
     const char* marker = mtmd_default_marker();
+    std::cerr << "[DEBUG] Default marker: '" << marker << "'" << std::endl;
 
     // If the message doesn't contain an image marker, prepend one
     if (messageWithMarker.find(marker) == std::string::npos) {
       messageWithMarker = std::string(marker) + "\n" + userMessage;
     }
+    std::cerr << "[DEBUG] Message with marker: " << messageWithMarker << std::endl;
 
     AddUserMessage(messageWithMarker);
 
@@ -598,6 +602,9 @@ class LlamaChat::Impl {
       return;
     }
 
+    std::cerr << "[DEBUG] Formatted prompt for mtmd:\n" << formattedPrompt << std::endl;
+    std::cerr << "[DEBUG] addBos: " << (addBos ? "true" : "false") << ", nPast: " << nPast << std::endl;
+
     // Prepare text input for mtmd_tokenize
     mtmd_input_text text;
     text.text = formattedPrompt.c_str();
@@ -613,6 +620,7 @@ class LlamaChat::Impl {
 
     // Tokenize the prompt with image
     const mtmd_bitmap* bitmaps[] = { bitmap };
+    std::cerr << "[DEBUG] Calling mtmd_tokenize with 1 bitmap" << std::endl;
     int32_t res = mtmd_tokenize(
         mtmdCtx,
         chunks,
@@ -626,6 +634,9 @@ class LlamaChat::Impl {
       mtmd_input_chunks_free(chunks);
       return;
     }
+
+    size_t n_chunks = mtmd_input_chunks_size(chunks);
+    std::cerr << "[DEBUG] mtmd_tokenize succeeded, number of chunks: " << n_chunks << std::endl;
 
     // Evaluate the chunks (this handles both text tokens and image embeddings)
     llama_pos new_n_past;
