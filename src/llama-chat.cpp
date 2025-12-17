@@ -38,9 +38,7 @@ struct MtmdContextDeleter {
 
 class LlamaChat::Impl {
  public:
-  Impl() {
-    ggml_backend_load_all();
-  }
+  Impl() { ggml_backend_load_all(); }
 
   ~Impl() noexcept = default;
 
@@ -48,6 +46,16 @@ class LlamaChat::Impl {
       const std::string& modelPath, const ModelParams& params
   ) {
     llama_model_params modelParams = llama_model_default_params();
+
+    llama_log_set(
+        [](ggml_log_level level, const char* text, void* user_data) {
+          (void)level;
+          (void)text;
+          (void)user_data;
+        },
+        NULL
+    );
+
     modelParams.n_gpu_layers = params.gpuLayerCount;
     modelParams.vocab_only = params.vocabularyOnly;
     modelParams.use_mmap = params.useMemoryMapping;
