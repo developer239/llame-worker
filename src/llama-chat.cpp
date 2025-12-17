@@ -8,6 +8,8 @@
 #include "common.h"
 #include "ggml.h"
 #include "llama.h"
+#include "mtmd.h"
+#include "mtmd-helper.h"
 
 class LlamaChat::Impl {
  public:
@@ -16,7 +18,12 @@ class LlamaChat::Impl {
     ggml_backend_load_all();
   }
 
-  ~Impl() = default;
+  ~Impl() {
+    if (mtmdCtx) {
+      mtmd_free(mtmdCtx);
+      mtmdCtx = nullptr;
+    }
+  }
 
   bool InitializeModel(
       const std::string& model_path, const ModelParams& params
@@ -40,6 +47,9 @@ class LlamaChat::Impl {
       return false;
     }
 
+    // Store params for later use
+    storedModelParams = params;
+
     return true;
   }
 
@@ -48,13 +58,15 @@ class LlamaChat::Impl {
     ctxParams.n_ctx = params.nContext;
     ctxParams.n_threads = params.nThreads;
     ctxParams.n_batch = params.nBatch;
-    // Note: logits_all and embeddings are no longer context params in new API
 
     ctx.reset(llama_init_from_model(model.get(), ctxParams));
     if (!ctx) {
       std::cerr << "Failed to create the llama_context" << std::endl;
       return false;
     }
+
+    // Store context params
+    storedContextParams = params;
 
     // Initialize the sampler chain
     auto sparams = llama_sampler_chain_default_params();
@@ -74,6 +86,37 @@ class LlamaChat::Impl {
       eotToken = llama_vocab_eos(vocab);
     }
 
+    // Initialize multimodal context if mmproj path was provided
+    if (!storedModelParams.multiModalPath.empty()) {
+      InitializeMultiModal();
+    }
+
+    return true;
+  }
+
+  bool InitializeMultiModal() {
+    if (storedModelParams.multiModalPath.empty()) {
+      return false;
+    }
+
+    mtmd_context_params mparams = mtmd_context_params_default();
+    mparams.use_gpu = storedModelParams.offloadMultiModalToGPU;
+    mparams.print_timings = false;
+    mparams.n_threads = storedContextParams.nThreads;
+
+    mtmdCtx = mtmd_init_from_file(
+        storedModelParams.multiModalPath.c_str(),
+        model.get(),
+        mparams
+    );
+
+    if (!mtmdCtx) {
+      std::cerr << "Failed to load multimodal projector from "
+                << storedModelParams.multiModalPath << std::endl;
+      return false;
+    }
+
+    hasVisionSupport = mtmd_support_vision(mtmdCtx);
     return true;
   }
 
@@ -136,6 +179,47 @@ class LlamaChat::Impl {
     });
   }
 
+  void PromptWithImage(
+      const std::string& userMessage, const ImageInput& image,
+      const std::function<void(const std::string&)>& callback
+  ) {
+    if (!mtmdCtx || !hasVisionSupport) {
+      std::cerr << "Warning: Multimodal support not available. "
+                << "Make sure to provide multiModalPath in ModelParams."
+                << std::endl;
+      // Fall back to text-only prompt
+      Prompt(userMessage, callback);
+      return;
+    }
+
+    // Load the image
+    mtmd_bitmap* bitmap = mtmd_helper_bitmap_init_from_file(
+        mtmdCtx, image.path.c_str()
+    );
+    if (!bitmap) {
+      std::cerr << "Failed to load image from " << image.path << std::endl;
+      Prompt(userMessage, callback);
+      return;
+    }
+
+    // Build prompt with image marker
+    std::string messageWithMarker = userMessage;
+    const char* marker = mtmd_default_marker();
+
+    // If the message doesn't contain an image marker, prepend one
+    if (messageWithMarker.find(marker) == std::string::npos) {
+      messageWithMarker = std::string(marker) + "\n" + userMessage;
+    }
+
+    AddUserMessage(messageWithMarker);
+
+    // Run multimodal query
+    RunMultiModalQueryStream(bitmap, callback);
+
+    // Clean up bitmap
+    mtmd_bitmap_free(bitmap);
+  }
+
   void SetSystemPrompt(const std::string& systemPrompt) {
     conversationHistory.clear();
     conversationHistory.push_back({"system", systemPrompt});
@@ -143,7 +227,12 @@ class LlamaChat::Impl {
 
   void ResetConversation() {
     conversationHistory.clear();
+    nPast = 0;
     llama_memory_clear(llama_get_memory(ctx.get()), true);
+  }
+
+  [[nodiscard]] bool HasVisionSupport() const {
+    return hasVisionSupport;
   }
 
  private:
@@ -170,6 +259,13 @@ class LlamaChat::Impl {
   std::unique_ptr<llama_sampler, LlamaSamplerDeleter> sampler = nullptr;
   const llama_vocab* vocab = nullptr;
   llama_token eotToken;
+
+  // Multimodal support
+  mtmd_context* mtmdCtx = nullptr;
+  bool hasVisionSupport = false;
+  ModelParams storedModelParams;
+  ContextParams storedContextParams;
+  llama_pos nPast = 0;
 
   void BuildPrompt(std::string& prompt) const {
     std::ostringstream oss;
@@ -238,16 +334,13 @@ class LlamaChat::Impl {
     sampler.reset(llama_sampler_chain_init(sparams));
 
     // Add samplers in order
-    // Note: The new API uses different initialization functions
-
     // Add penalties sampler for repeat penalty
     if (params.repeatPenalty != 1.0f || params.frequencyPenalty != 0.0f ||
         params.presencePenalty != 0.0f) {
       llama_sampler_chain_add(
           sampler.get(),
           llama_sampler_init_penalties(
-              64,  // penalty_last_n (last n tokens to penalize, 0 = disable, -1
-                   // = context size)
+              64,  // penalty_last_n
               params.repeatPenalty,     // penalty_repeat (1.0 = disabled)
               params.frequencyPenalty,  // penalty_freq (0.0 = disabled)
               params.presencePenalty    // penalty_present (0.0 = disabled)
@@ -354,12 +447,104 @@ class LlamaChat::Impl {
 
     conversationHistory.push_back({"assistant", assistantResponse});
   }
+
+  void RunMultiModalQueryStream(
+      mtmd_bitmap* bitmap,
+      const std::function<void(const std::string&)>& callback
+  ) {
+    std::string prompt;
+    BuildPrompt(prompt);
+
+    SamplingParams params;
+    SetupSamplerChain(params);
+
+    // Prepare text input for mtmd_tokenize
+    mtmd_input_text text;
+    text.text = prompt.c_str();
+    text.add_special = (nPast == 0);  // Add BOS if at start
+    text.parse_special = true;
+
+    // Create input chunks
+    mtmd_input_chunks* chunks = mtmd_input_chunks_init();
+    if (!chunks) {
+      std::cerr << "Failed to create input chunks" << std::endl;
+      return;
+    }
+
+    // Tokenize the prompt with image
+    const mtmd_bitmap* bitmaps[] = { bitmap };
+    int32_t res = mtmd_tokenize(
+        mtmdCtx,
+        chunks,
+        &text,
+        bitmaps,
+        1  // Number of bitmaps
+    );
+
+    if (res != 0) {
+      std::cerr << "Failed to tokenize multimodal prompt, error: " << res << std::endl;
+      mtmd_input_chunks_free(chunks);
+      return;
+    }
+
+    // Evaluate the chunks (this handles both text tokens and image embeddings)
+    llama_pos new_n_past;
+    int eval_result = mtmd_helper_eval_chunks(
+        mtmdCtx,
+        ctx.get(),
+        chunks,
+        nPast,
+        0,  // seq_id
+        storedContextParams.nBatch,
+        true,  // logits_last
+        &new_n_past
+    );
+
+    mtmd_input_chunks_free(chunks);
+
+    if (eval_result != 0) {
+      std::cerr << "Failed to evaluate multimodal chunks" << std::endl;
+      return;
+    }
+
+    nPast = new_n_past;
+
+    // Generate response tokens
+    std::string assistantResponse;
+    llama_batch batch = llama_batch_init(1, 0, 1);
+
+    for (size_t i = 0; i < params.maxTokens; ++i) {
+      // Sample next token
+      llama_token new_token = llama_sampler_sample(sampler.get(), ctx.get(), -1);
+
+      // Check for end of generation
+      if (llama_vocab_is_eog(vocab, new_token) || new_token == eotToken) {
+        break;
+      }
+
+      // Convert token to string
+      std::string piece = TokenToString(new_token);
+      callback(piece);
+      assistantResponse += piece;
+
+      // Prepare batch for next token using common helpers
+      common_batch_clear(batch);
+      common_batch_add(batch, new_token, nPast++, {0}, true);
+
+      if (llama_decode(ctx.get(), batch) != 0) {
+        std::cerr << "Failed to decode token" << std::endl;
+        break;
+      }
+    }
+
+    llama_batch_free(batch);
+    conversationHistory.push_back({"assistant", assistantResponse});
+  }
 };
 
 ImageInput ImageInput::FromPath(const std::string& path) {
   ImageInput input;
   input.path = path;
-  // Data loading will be handled by multimodal code
   return input;
 }
 
@@ -403,16 +588,15 @@ void LlamaChat::PromptWithImage(
     const std::string& userMessage, const ImageInput& image,
     const std::function<void(const std::string&)>& callback
 ) {
-  // TODO: Implement multimodal support
-  // For now, fall back to text-only prompt
-  std::cerr << "Warning: PromptWithImage not yet implemented, falling back to "
-               "text-only"
-            << std::endl;
-  pimpl->Prompt(userMessage, callback);
+  return pimpl->PromptWithImage(userMessage, image, callback);
 }
 
 std::vector<LlamaToken> LlamaChat::Encode(
     const std::string& text, bool addBos
 ) const {
   return pimpl->Encode(text, addBos);
+}
+
+bool LlamaChat::HasVisionSupport() const {
+  return pimpl->HasVisionSupport();
 }

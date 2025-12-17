@@ -18,6 +18,7 @@ struct ModelParams {
   bool useMemoryMapping = true;
   bool useModelLock = false;
 
+  // Path to mmproj (multimodal projector) file
   std::string multiModalPath;
   bool offloadMultiModalToGPU = true;
 };
@@ -41,7 +42,6 @@ struct SamplingParams {
 
 struct ImageInput {
   std::string path;
-  std::vector<uint8_t> data;
 
   static ImageInput FromPath(const std::string& path);
 };
@@ -75,6 +75,8 @@ class LlamaChat {
   [[nodiscard]] std::vector<LlamaToken> Encode(
       const std::string& text, bool addBos = true
   ) const;
+
+  [[nodiscard]] bool HasVisionSupport() const;
 
  private:
   class Impl;
