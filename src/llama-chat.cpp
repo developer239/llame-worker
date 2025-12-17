@@ -77,12 +77,9 @@ class LlamaChat::Impl {
       return false;
     }
 
-    // Try to find the EOT token for Llama 3 style models
-    auto eot_tokens = Encode("<|eot_id|>", false, true);
-    if (eot_tokens.size() == 1) {
-      eotToken = eot_tokens[0].tokenId;
-    } else {
-      // Fallback: use EOS token
+    // Use the model's EOT token, fallback to EOS if not available
+    eotToken = llama_vocab_eot(vocab);
+    if (eotToken == LLAMA_TOKEN_NULL) {
       eotToken = llama_vocab_eos(vocab);
     }
 
@@ -268,39 +265,44 @@ class LlamaChat::Impl {
   llama_pos nPast = 0;
 
   void BuildPrompt(std::string& prompt) const {
-    std::ostringstream oss;
-    oss << "<|begin_of_text|>";
+    // Get the chat template from the model
+    const char* tmpl = llama_model_chat_template(model.get(), nullptr);
 
-    // Add system prompt first
+    // Convert conversation history to llama_chat_message format
+    std::vector<llama_chat_message> messages;
+    messages.reserve(conversationHistory.size());
+
     for (const auto& msg : conversationHistory) {
-      if (msg.role == "system") {
-        oss << "<|start_header_id|>" << msg.role << "<|end_header_id|>"
-            << msg.content << "<|eot_id|>";
-        break;  // Assume there's only one system message
-      }
+      messages.push_back({msg.role.c_str(), msg.content.c_str()});
     }
 
-    size_t totalTokens = 0;
-    const size_t maxTokens =
-        1024;  // Adjust this based on your model's context size
-    for (auto it = conversationHistory.begin(); it != conversationHistory.end();
-         ++it) {
-      if (it->role != "system") {
-        std::string messageContent = "<|start_header_id|>" + it->role +
-                                     "<|end_header_id|>" + it->content +
-                                     "<|eot_id|>";
-        auto tokens = Encode(messageContent, false);
-        if (totalTokens + tokens.size() > maxTokens) {
-          break;
-        }
-        oss << messageContent;
-        totalTokens += tokens.size();
-      }
+    // First call to get required buffer size
+    int32_t size = llama_chat_apply_template(
+        tmpl,
+        messages.data(),
+        messages.size(),
+        true,  // add_ass: add assistant prompt prefix
+        nullptr,
+        0
+    );
+
+    if (size < 0) {
+      std::cerr << "Failed to apply chat template" << std::endl;
+      prompt.clear();
+      return;
     }
 
-    oss << "<|start_header_id|>assistant<|end_header_id|>";
-
-    prompt = oss.str();
+    // Allocate buffer and apply template
+    prompt.resize(size + 1);
+    llama_chat_apply_template(
+        tmpl,
+        messages.data(),
+        messages.size(),
+        true,
+        prompt.data(),
+        prompt.size()
+    );
+    prompt.resize(size);  // Remove extra byte
   }
 
   [[nodiscard]] std::string TokenToString(llama_token token) const {
