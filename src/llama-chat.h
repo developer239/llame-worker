@@ -17,6 +17,9 @@ struct ModelParams {
   bool vocabularyOnly = false;
   bool useMemoryMapping = true;
   bool useModelLock = false;
+
+  std::string multiModalPath;
+  bool offloadMultiModalToGPU = true;
 };
 
 struct ContextParams {
@@ -34,6 +37,13 @@ struct SamplingParams {
   float frequencyPenalty = 1.0f;
   float presencePenalty = 0.0f;
   std::vector<LlamaToken> repeatPenaltyTokens;
+};
+
+struct ImageInput {
+  std::string path;
+  std::vector<uint8_t> data;
+
+  static ImageInput FromPath(const std::string& path);
 };
 
 class LlamaChat {
@@ -54,6 +64,11 @@ class LlamaChat {
 
   void Prompt(
       const std::string& userMessage,
+      const std::function<void(const std::string&)>& callback
+  );
+
+  void PromptWithImage(
+      const std::string& userMessage, const ImageInput& image,
       const std::function<void(const std::string&)>& callback
   );
 

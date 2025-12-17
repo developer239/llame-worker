@@ -6,13 +6,17 @@
 #include <vector>
 
 #include "common.h"
+#include "ggml.h"
 #include "llama.h"
 
 class LlamaChat::Impl {
  public:
-  Impl() { llama_backend_init(); }
+  Impl() {
+    // Load all available backends (CPU, CUDA, Metal, etc.)
+    ggml_backend_load_all();
+  }
 
-  ~Impl() { llama_backend_free(); }
+  ~Impl() = default;
 
   bool InitializeModel(
       const std::string& model_path, const ModelParams& params
@@ -23,9 +27,16 @@ class LlamaChat::Impl {
     modelParams.use_mmap = params.useMemoryMapping;
     modelParams.use_mlock = params.useModelLock;
 
-    model.reset(llama_load_model_from_file(model_path.c_str(), modelParams));
+    model.reset(llama_model_load_from_file(model_path.c_str(), modelParams));
     if (!model) {
       std::cerr << "Failed to load model from " << model_path << std::endl;
+      return false;
+    }
+
+    // Get vocabulary from model
+    vocab = llama_model_get_vocab(model.get());
+    if (!vocab) {
+      std::cerr << "Failed to get vocabulary from model" << std::endl;
       return false;
     }
 
@@ -37,21 +48,31 @@ class LlamaChat::Impl {
     ctxParams.n_ctx = params.nContext;
     ctxParams.n_threads = params.nThreads;
     ctxParams.n_batch = params.nBatch;
-    ctxParams.logits_all = false;
-    ctxParams.embeddings = false;
+    // Note: logits_all and embeddings are no longer context params in new API
 
-    ctx.reset(llama_new_context_with_model(model.get(), ctxParams));
+    ctx.reset(llama_init_from_model(model.get(), ctxParams));
     if (!ctx) {
       std::cerr << "Failed to create the llama_context" << std::endl;
       return false;
     }
 
-    auto eot_tokens = Encode("<|eot_id|>", false, true);
-    if (eot_tokens.size() != 1) {
-      std::cerr << "Failed to retrieve <|eot_id|> token ID." << std::endl;
+    // Initialize the sampler chain
+    auto sparams = llama_sampler_chain_default_params();
+    sparams.no_perf = true;  // Disable performance metrics for cleaner output
+    sampler.reset(llama_sampler_chain_init(sparams));
+    if (!sampler) {
+      std::cerr << "Failed to create sampler chain" << std::endl;
       return false;
     }
-    eotToken = eot_tokens[0].tokenId;
+
+    // Try to find the EOT token for Llama 3 style models
+    auto eot_tokens = Encode("<|eot_id|>", false, true);
+    if (eot_tokens.size() == 1) {
+      eotToken = eot_tokens[0].tokenId;
+    } else {
+      // Fallback: use EOS token
+      eotToken = llama_vocab_eos(vocab);
+    }
 
     return true;
   }
@@ -59,15 +80,31 @@ class LlamaChat::Impl {
   [[nodiscard]] std::vector<LlamaToken> Encode(
       const std::string& text, bool addBos, bool parseSpecial = false
   ) const {
-    int maxTokens = text.length() + (addBos ? 1 : 0);
-    std::vector<llama_token> llamaTokens(maxTokens);
-
+    // First call with NULL to get the number of tokens needed
     int nTokens = llama_tokenize(
-        model.get(),
+        vocab,
+        text.c_str(),
+        text.length(),
+        nullptr,
+        0,
+        addBos,
+        parseSpecial
+    );
+
+    // nTokens is negative, representing the required buffer size
+    if (nTokens == 0) {
+      return {};
+    }
+
+    int requiredSize = nTokens < 0 ? -nTokens : nTokens;
+    std::vector<llama_token> llamaTokens(requiredSize);
+
+    nTokens = llama_tokenize(
+        vocab,
         text.c_str(),
         text.length(),
         llamaTokens.data(),
-        maxTokens,
+        llamaTokens.size(),
         addBos,
         parseSpecial
     );
@@ -106,17 +143,20 @@ class LlamaChat::Impl {
 
   void ResetConversation() {
     conversationHistory.clear();
-
-    llama_kv_cache_clear(ctx.get());
+    llama_memory_clear(llama_get_memory(ctx.get()), true);
   }
 
  private:
   struct LlamaModelDeleter {
-    void operator()(llama_model* model) const { llama_free_model(model); }
+    void operator()(llama_model* m) const { llama_model_free(m); }
   };
 
   struct LlamaContextDeleter {
-    void operator()(llama_context* ctx) const { llama_free(ctx); }
+    void operator()(llama_context* c) const { llama_free(c); }
+  };
+
+  struct LlamaSamplerDeleter {
+    void operator()(llama_sampler* s) const { llama_sampler_free(s); }
   };
 
   struct Message {
@@ -127,6 +167,8 @@ class LlamaChat::Impl {
   std::vector<Message> conversationHistory;
   std::unique_ptr<llama_model, LlamaModelDeleter> model = nullptr;
   std::unique_ptr<llama_context, LlamaContextDeleter> ctx = nullptr;
+  std::unique_ptr<llama_sampler, LlamaSamplerDeleter> sampler = nullptr;
+  const llama_vocab* vocab = nullptr;
   llama_token eotToken;
 
   void BuildPrompt(std::string& prompt) const {
@@ -165,45 +207,81 @@ class LlamaChat::Impl {
     prompt = oss.str();
   }
 
-  [[nodiscard]] LlamaToken SampleToken(const SamplingParams& params) const {
-    const float* logits = llama_get_logits(ctx.get());
-    const int nVocabulary = llama_n_vocab(model.get());
-
-    std::vector<llama_token_data> candidates;
-    candidates.reserve(nVocabulary);
-
-    for (llama_token tokenId = 0; tokenId < nVocabulary; tokenId++) {
-      candidates.emplace_back(llama_token_data{tokenId, logits[tokenId], 0.0f});
-    }
-
-    llama_token_data_array candidatesP = {
-        candidates.data(),
-        candidates.size(),
-        false
-    };
-
-    if (!params.repeatPenaltyTokens.empty()) {
-      std::vector<llama_token> penaltyTokens;
-      for (const auto& token : params.repeatPenaltyTokens) {
-        penaltyTokens.push_back(token.tokenId);
+  [[nodiscard]] std::string TokenToString(llama_token token) const {
+    char buf[256];
+    int n = llama_token_to_piece(vocab, token, buf, sizeof(buf), 0, true);
+    if (n < 0) {
+      // Buffer too small, try with larger buffer
+      std::vector<char> largeBuf(-n);
+      n = llama_token_to_piece(
+          vocab,
+          token,
+          largeBuf.data(),
+          largeBuf.size(),
+          0,
+          true
+      );
+      if (n < 0) {
+        return "";
       }
+      return std::string(largeBuf.data(), n);
+    }
+    return std::string(buf, n);
+  }
 
-      llama_sample_repetition_penalties(
-          ctx.get(),
-          &candidatesP,
-          penaltyTokens.data(),
-          penaltyTokens.size(),
-          params.repeatPenalty,
-          params.frequencyPenalty,
-          params.presencePenalty
+  void SetupSamplerChain(const SamplingParams& params) {
+    // Clear existing samplers
+    sampler.reset();
+
+    auto sparams = llama_sampler_chain_default_params();
+    sparams.no_perf = true;
+    sampler.reset(llama_sampler_chain_init(sparams));
+
+    // Add samplers in order
+    // Note: The new API uses different initialization functions
+
+    // Add penalties sampler for repeat penalty
+    if (params.repeatPenalty != 1.0f || params.frequencyPenalty != 0.0f ||
+        params.presencePenalty != 0.0f) {
+      llama_sampler_chain_add(
+          sampler.get(),
+          llama_sampler_init_penalties(
+              64,  // penalty_last_n (last n tokens to penalize, 0 = disable, -1
+                   // = context size)
+              params.repeatPenalty,     // penalty_repeat (1.0 = disabled)
+              params.frequencyPenalty,  // penalty_freq (0.0 = disabled)
+              params.presencePenalty    // penalty_present (0.0 = disabled)
+          )
       );
     }
 
-    llama_sample_top_k(ctx.get(), &candidatesP, params.topK, 1);
-    llama_sample_top_p(ctx.get(), &candidatesP, params.topP, 1);
-    llama_sample_temp(ctx.get(), &candidatesP, params.temperature);
+    // Add top-k sampler
+    if (params.topK > 0) {
+      llama_sampler_chain_add(
+          sampler.get(),
+          llama_sampler_init_top_k(params.topK)
+      );
+    }
 
-    return LlamaToken(llama_sample_token(ctx.get(), &candidatesP));
+    // Add top-p sampler
+    if (params.topP < 1.0f) {
+      llama_sampler_chain_add(
+          sampler.get(),
+          llama_sampler_init_top_p(params.topP, 1)
+      );
+    }
+
+    // Add temperature sampler
+    llama_sampler_chain_add(
+        sampler.get(),
+        llama_sampler_init_temp(params.temperature)
+    );
+
+    // Add distribution sampler (required to actually sample a token)
+    llama_sampler_chain_add(
+        sampler.get(),
+        llama_sampler_init_dist(LLAMA_DEFAULT_SEED)
+    );
   }
 
   void AddUserMessage(const std::string& message) {
@@ -222,46 +300,68 @@ class LlamaChat::Impl {
     BuildPrompt(prompt);
 
     SamplingParams params;
+    SetupSamplerChain(params);
+
     auto tokens = Encode(prompt, false, true);
-
-    llama_batch batch = llama_batch_init(params.maxTokens, 0, 1);
-    for (size_t i = 0; i < tokens.size(); ++i) {
-      llama_batch_add(batch, tokens[i].tokenId, i, {0}, false);
+    if (tokens.empty()) {
+      std::cerr << "Failed to tokenize prompt" << std::endl;
+      return;
     }
 
+    // Convert to llama_token vector
+    std::vector<llama_token> tokenIds;
+    tokenIds.reserve(tokens.size());
+    for (const auto& t : tokens) {
+      tokenIds.push_back(t.tokenId);
+    }
+
+    // Create batch for the prompt
+    llama_batch batch = llama_batch_get_one(tokenIds.data(), tokenIds.size());
+
+    // Decode the prompt
     if (llama_decode(ctx.get(), batch) != 0) {
-      throw std::runtime_error("llama_decode() failed");
+      throw std::runtime_error("llama_decode() failed for prompt");
     }
 
-    size_t nCur = batch.n_tokens;
+    size_t nCur = tokenIds.size();
     std::string assistantResponse;
 
-    std::string currentPiece;
-    while (nCur < params.maxTokens) {
-      auto new_token = SampleToken(params);
+    while (nCur < params.maxTokens + tokenIds.size()) {
+      // Sample next token
+      llama_token new_token =
+          llama_sampler_sample(sampler.get(), ctx.get(), -1);
 
-      if (new_token.tokenId == eotToken) break;
+      // Check for end of generation
+      if (llama_vocab_is_eog(vocab, new_token) || new_token == eotToken) {
+        break;
+      }
 
-      std::string piece = llama_token_to_piece(ctx.get(), new_token.tokenId);
-      currentPiece += piece;
+      // Convert token to string
+      std::string piece = TokenToString(new_token);
 
-      callback(currentPiece);
-      assistantResponse += currentPiece;
-      currentPiece.clear();
+      callback(piece);
+      assistantResponse += piece;
 
-      llama_batch_clear(batch);
-      llama_batch_add(batch, new_token.tokenId, nCur, {0}, true);
-      nCur += 1;
+      // Create batch for the new token
+      batch = llama_batch_get_one(&new_token, 1);
 
       if (llama_decode(ctx.get(), batch) != 0) {
         throw std::runtime_error("Failed to evaluate");
       }
+
+      nCur += 1;
     }
 
-    llama_batch_free(batch);
     conversationHistory.push_back({"assistant", assistantResponse});
   }
 };
+
+ImageInput ImageInput::FromPath(const std::string& path) {
+  ImageInput input;
+  input.path = path;
+  // Data loading will be handled by multimodal code
+  return input;
+}
 
 LlamaChat::LlamaChat() : pimpl(std::make_unique<Impl>()) {}
 LlamaChat::~LlamaChat() = default;
@@ -299,7 +399,20 @@ void LlamaChat::Prompt(
   return pimpl->Prompt(userMessage, callback);
 }
 
-std::vector<LlamaToken> LlamaChat::Encode(const std::string& text, bool addBos)
-    const {
+void LlamaChat::PromptWithImage(
+    const std::string& userMessage, const ImageInput& image,
+    const std::function<void(const std::string&)>& callback
+) {
+  // TODO: Implement multimodal support
+  // For now, fall back to text-only prompt
+  std::cerr << "Warning: PromptWithImage not yet implemented, falling back to "
+               "text-only"
+            << std::endl;
+  pimpl->Prompt(userMessage, callback);
+}
+
+std::vector<LlamaToken> LlamaChat::Encode(
+    const std::string& text, bool addBos
+) const {
   return pimpl->Encode(text, addBos);
 }

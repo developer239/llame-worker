@@ -20,13 +20,24 @@ set(SOURCES
 
 add_library(${LIB_NAME} STATIC ${SOURCES})
 
-target_link_libraries(${LIB_NAME} PRIVATE llama common ${CMAKE_THREAD_LIBS_INIT})
+# Link libraries - mtmd is the multimodal library
+target_link_libraries(${LIB_NAME} PRIVATE
+        llama
+        common
+        mtmd
+        ${CMAKE_THREAD_LIBS_INIT}
+)
 
 target_include_directories(${LIB_NAME}
         PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/externals/llama.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/externals/llama.cpp/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/externals/llama.cpp/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/externals/llama.cpp/ggml/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/externals/llama.cpp/common
+        ${CMAKE_CURRENT_SOURCE_DIR}/externals/llama.cpp/tools/mtmd  # ADD THIS LINE
 )
 
 install(TARGETS ${LIB_NAME} DESTINATION lib)
