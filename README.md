@@ -1,8 +1,11 @@
 # LlamaChat 🦙🦙🦙
 
-LlamaChat is a C++ library designed for running **multimodal** language models using the [llama.cpp](https://github.com/ggerganov/llama.cpp) framework. It provides an easy-to-use interface for loading models, querying them with text and images, and streaming responses in C++ applications.
+LlamaChat is a C++ library designed for running **multimodal** language models using
+the [llama.cpp](https://github.com/ggerganov/llama.cpp) framework. It provides an easy-to-use interface for loading
+models, querying them with text and images, and streaming responses in C++ applications.
 
-> **Note:** This library exclusively supports multimodal (vision-capable) models. A multimodal projector file is required for initialization.
+> **Note:** This library exclusively supports multimodal (vision-capable) models. A multimodal projector file is
+> required for initialization.
 
 **Supported Systems:**
 
@@ -33,18 +36,6 @@ In your project's `CMakeLists.txt`, add the following lines to include and link 
 ```cmake
 add_subdirectory(externals/llama-chat)
 target_link_libraries(<your_target> PRIVATE LlamaChat)
-```
-
-### Build Options
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `LLAMACHAT_DISABLE_LOGS` | `ON` | Disable llama.cpp logging at compile time |
-
-By default, all llama.cpp internal logs are disabled for a clean output. To enable logs (useful for debugging):
-
-```bash
-cmake -DLLAMACHAT_DISABLE_LOGS=OFF ..
 ```
 
 ## Usage
@@ -130,7 +121,8 @@ int main() {
 
 ### Streaming Responses
 
-The `Prompt` method implements streaming responses by providing a callback function. This is useful for long outputs where you want to display text as it's generated.
+The `Prompt` method implements streaming responses by providing a callback function. This is useful for long outputs
+where you want to display text as it's generated.
 
 ## API Reference
 
@@ -142,11 +134,15 @@ The `LlamaChat` class provides methods to interact with multimodal language mode
 
 - `LlamaChat()`: Constructor. Initializes the LlamaChat object.
 - `~LlamaChat()`: Destructor. Cleans up resources.
-- `bool InitializeModel(const std::string& modelPath, const ModelParams& params)`: Initializes the model with the specified path and parameters.
-- `bool InitializeContext(const ContextParams& params)`: Initializes the context with the specified parameters. Throws if multimodal projector is not configured or doesn't support vision.
+- `bool InitializeModel(const std::string& modelPath, const ModelParams& params)`: Initializes the model with the
+  specified path and parameters.
+- `bool InitializeContext(const ContextParams& params)`: Initializes the context with the specified parameters. Throws
+  if multimodal projector is not configured or doesn't support vision.
 - `void SetSystemPrompt(const std::string& systemPrompt)`: Sets the system prompt for the conversation.
 - `void ResetConversation()`: Resets the conversation history and context.
-- `void Prompt(const std::string& userMessage, const std::function<void(const std::string&)>& callback, const std::optional<ImageInput>& image = std::nullopt)`: Processes the user message (with optional image) and streams the response.
+-
+`void Prompt(const std::string& userMessage, const std::function<void(const std::string&)>& callback, const std::optional<ImageInput>& image = std::nullopt)`:
+Processes the user message (with optional image) and streams the response.
 
 #### Structs
 
@@ -154,59 +150,60 @@ The `LlamaChat` class provides methods to interact with multimodal language mode
 
 Represents a token in the model's vocabulary.
 
-| Field | Type | Description |
-|-------|------|-------------|
+| Field     | Type  | Description                        |
+|-----------|-------|------------------------------------|
 | `tokenId` | `int` | The unique identifier of the token |
 
 ##### ModelParams
 
 Parameters for model initialization.
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `gpuLayerCount` | `int` | `0` | Number of layers to offload to GPU. Set to 0 for CPU-only |
-| `vocabularyOnly` | `bool` | `false` | Only load the vocabulary, no weights |
-| `useMemoryMapping` | `bool` | `true` | Use memory mapping for faster loading |
-| `useModelLock` | `bool` | `false` | Force system to keep model in RAM |
-| `multiModalProjectorPath` | `std::string` | `""` | **Required.** Path to the multimodal projector (mmproj) file |
-| `offloadMultiModalToGPU` | `bool` | `true` | Whether to offload multimodal processing to GPU |
+| Field                     | Type          | Default | Description                                                  |
+|---------------------------|---------------|---------|--------------------------------------------------------------|
+| `gpuLayerCount`           | `int`         | `0`     | Number of layers to offload to GPU. Set to 0 for CPU-only    |
+| `vocabularyOnly`          | `bool`        | `false` | Only load the vocabulary, no weights                         |
+| `useMemoryMapping`        | `bool`        | `true`  | Use memory mapping for faster loading                        |
+| `useModelLock`            | `bool`        | `false` | Force system to keep model in RAM                            |
+| `multiModalProjectorPath` | `std::string` | `""`    | **Required.** Path to the multimodal projector (mmproj) file |
+| `offloadMultiModalToGPU`  | `bool`        | `true`  | Whether to offload multimodal processing to GPU              |
 
 ##### ContextParams
 
 Parameters for context initialization.
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `contextSize` | `size_t` | `4096` | Size of the context window (in tokens) |
-| `threadCount` | `int` | `6` | Number of threads to use for computation |
-| `batchSize` | `int` | `512` | Number of tokens to process in parallel |
+| Field         | Type     | Default | Description                              |
+|---------------|----------|---------|------------------------------------------|
+| `contextSize` | `size_t` | `4096`  | Size of the context window (in tokens)   |
+| `threadCount` | `int`    | `6`     | Number of threads to use for computation |
+| `batchSize`   | `int`    | `512`   | Number of tokens to process in parallel  |
 
 ##### SamplingParams
 
 Parameters for text generation sampling.
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `maxTokens` | `size_t` | `1000` | Maximum number of tokens to generate |
-| `temperature` | `float` | `1.0` | Controls randomness in generation |
-| `topK` | `int32_t` | `45` | Limits sampling to the k most likely tokens |
-| `topP` | `float` | `0.95` | Limits sampling to a cumulative probability |
-| `repeatPenalty` | `float` | `1.0` | Penalty for repeating tokens (1.0 = disabled) |
-| `frequencyPenalty` | `float` | `1.0` | Penalty based on token frequency in generated text |
-| `presencePenalty` | `float` | `0.0` | Penalty for tokens already present in generated text |
-| `penaltyLastN` | `int` | `64` | Number of previous tokens to consider for penalties |
-| `seed` | `unsigned int` | `0xFFFFFFFF` | Random seed for sampling (default = random) |
-| `repeatPenaltyTokens` | `std::vector<LlamaToken>` | `{}` | Specific tokens to consider for repeat penalty |
+| Field                 | Type                      | Default      | Description                                          |
+|-----------------------|---------------------------|--------------|------------------------------------------------------|
+| `maxTokens`           | `size_t`                  | `1000`       | Maximum number of tokens to generate                 |
+| `temperature`         | `float`                   | `1.0`        | Controls randomness in generation                    |
+| `topK`                | `int32_t`                 | `45`         | Limits sampling to the k most likely tokens          |
+| `topP`                | `float`                   | `0.95`       | Limits sampling to a cumulative probability          |
+| `repeatPenalty`       | `float`                   | `1.0`        | Penalty for repeating tokens (1.0 = disabled)        |
+| `frequencyPenalty`    | `float`                   | `1.0`        | Penalty based on token frequency in generated text   |
+| `presencePenalty`     | `float`                   | `0.0`        | Penalty for tokens already present in generated text |
+| `penaltyLastN`        | `int`                     | `64`         | Number of previous tokens to consider for penalties  |
+| `seed`                | `unsigned int`            | `0xFFFFFFFF` | Random seed for sampling (default = random)          |
+| `repeatPenaltyTokens` | `std::vector<LlamaToken>` | `{}`         | Specific tokens to consider for repeat penalty       |
 
 ##### ImageInput
 
 Represents an image input for multimodal prompts.
 
-| Field | Type | Description |
-|-------|------|-------------|
+| Field  | Type          | Description            |
+|--------|---------------|------------------------|
 | `path` | `std::string` | Path to the image file |
 
 **Static Methods:**
+
 - `static ImageInput FromPath(const std::string& path)`: Creates an ImageInput from a file path.
 
 ## Supported Models

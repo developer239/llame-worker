@@ -1,6 +1,8 @@
 #include "llama-chat.h"
 
+#include <cstdio>
 #include <iostream>
+#include <mutex>
 #include <sstream>
 #include <stdexcept>
 #include <vector>
@@ -11,6 +13,19 @@
 #include "llama.h"
 #include "mtmd-helper.h"
 #include "mtmd.h"
+
+namespace {
+void silenceStderrOnce() {
+  static std::once_flag once;
+  std::call_once(once, []() {
+#ifdef _WIN32
+    freopen("NUL", "w", stderr);
+#else
+        freopen("/dev/null", "w", stderr);
+#endif
+  });
+}
+}  // namespace
 
 struct LlamaModelDeleter {
   void operator()(llama_model* model) const {
@@ -38,7 +53,10 @@ struct MtmdContextDeleter {
 
 class LlamaChat::Impl {
  public:
-  Impl() { ggml_backend_load_all(); }
+  Impl() {
+    silenceStderrOnce();
+    ggml_backend_load_all();
+  }
 
   ~Impl() noexcept = default;
 
@@ -47,14 +65,7 @@ class LlamaChat::Impl {
   ) {
     llama_model_params modelParams = llama_model_default_params();
 
-    llama_log_set(
-        [](ggml_log_level level, const char* text, void* user_data) {
-          (void)level;
-          (void)text;
-          (void)user_data;
-        },
-        NULL
-    );
+    // llama_log_set([](ggml_log_level, const char*, void*) {}, nullptr);
 
     modelParams.n_gpu_layers = params.gpuLayerCount;
     modelParams.vocab_only = params.vocabularyOnly;
@@ -80,6 +91,9 @@ class LlamaChat::Impl {
     }
 
     llama_context_params contextParams = llama_context_default_params();
+
+    // llama_log_set([](ggml_log_level, const char*, void*) {}, nullptr);
+
     contextParams.n_ctx = params.contextSize;
     contextParams.n_threads = params.threadCount;
     contextParams.n_batch = params.batchSize;
