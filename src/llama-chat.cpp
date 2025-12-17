@@ -391,13 +391,70 @@ class LlamaChat::Impl {
   }
 
   void RunQueryStream(const std::function<void(const std::string&)>& callback) {
-    std::string prompt;
-    BuildPrompt(prompt);
-
     SamplingParams params;
     SetupSamplerChain(params);
 
-    auto tokens = Encode(prompt, false, true);
+    // Get the chat template from the model
+    const char* tmpl = llama_model_chat_template(model.get(), nullptr);
+
+    // Build message arrays for chat template
+    std::vector<llama_chat_message> allMessages;
+    for (const auto& msg : conversationHistory) {
+      allMessages.push_back({msg.role.c_str(), msg.content.c_str()});
+    }
+
+    // Determine if we need BOS (only for first message in conversation)
+    bool addBos = (nPast == 0);
+
+    std::string formattedPrompt;
+
+    if (addBos) {
+      // First message: format the full conversation so far
+      int32_t size = llama_chat_apply_template(
+          tmpl, allMessages.data(), allMessages.size(),
+          true, nullptr, 0);
+      if (size > 0) {
+        formattedPrompt.resize(size + 1);
+        llama_chat_apply_template(
+            tmpl, allMessages.data(), allMessages.size(),
+            true, formattedPrompt.data(), formattedPrompt.size());
+        formattedPrompt.resize(size);
+      }
+    } else {
+      // Subsequent messages: only format the new message
+      int32_t fullSize = llama_chat_apply_template(
+          tmpl, allMessages.data(), allMessages.size(),
+          true, nullptr, 0);
+
+      int32_t prevSize = 0;
+      if (allMessages.size() > 1) {
+        prevSize = llama_chat_apply_template(
+            tmpl, allMessages.data(), allMessages.size() - 1,
+            true, nullptr, 0);
+      }
+
+      if (fullSize > 0) {
+        std::string fullPrompt;
+        fullPrompt.resize(fullSize + 1);
+        llama_chat_apply_template(
+            tmpl, allMessages.data(), allMessages.size(),
+            true, fullPrompt.data(), fullPrompt.size());
+        fullPrompt.resize(fullSize);
+
+        if (prevSize > 0 && prevSize < fullSize) {
+          formattedPrompt = fullPrompt.substr(prevSize);
+        } else {
+          formattedPrompt = fullPrompt;
+        }
+      }
+    }
+
+    if (formattedPrompt.empty()) {
+      std::cerr << "Failed to format chat prompt" << std::endl;
+      return;
+    }
+
+    auto tokens = Encode(formattedPrompt, addBos, true);
     if (tokens.empty()) {
       std::cerr << "Failed to tokenize prompt" << std::endl;
       return;
@@ -411,17 +468,25 @@ class LlamaChat::Impl {
     }
 
     // Create batch for the prompt
-    llama_batch batch = llama_batch_get_one(tokenIds.data(), tokenIds.size());
+    llama_batch batch = llama_batch_init(tokenIds.size(), 0, 1);
+    for (size_t i = 0; i < tokenIds.size(); i++) {
+      common_batch_add(batch, tokenIds[i], nPast + i, {0}, i == tokenIds.size() - 1);
+    }
 
     // Decode the prompt
     if (llama_decode(ctx.get(), batch) != 0) {
+      llama_batch_free(batch);
       throw std::runtime_error("llama_decode() failed for prompt");
     }
 
-    size_t nCur = tokenIds.size();
+    nPast += tokenIds.size();
+    llama_batch_free(batch);
+
+    // Reinitialize batch for token generation
+    batch = llama_batch_init(1, 0, 1);
     std::string assistantResponse;
 
-    while (nCur < params.maxTokens + tokenIds.size()) {
+    for (size_t i = 0; i < params.maxTokens; ++i) {
       // Sample next token
       llama_token new_token =
           llama_sampler_sample(sampler.get(), ctx.get(), -1);
@@ -438,15 +503,16 @@ class LlamaChat::Impl {
       assistantResponse += piece;
 
       // Create batch for the new token
-      batch = llama_batch_get_one(&new_token, 1);
+      common_batch_clear(batch);
+      common_batch_add(batch, new_token, nPast++, {0}, true);
 
       if (llama_decode(ctx.get(), batch) != 0) {
+        llama_batch_free(batch);
         throw std::runtime_error("Failed to evaluate");
       }
-
-      nCur += 1;
     }
 
+    llama_batch_free(batch);
     conversationHistory.push_back({"assistant", assistantResponse});
   }
 
@@ -454,16 +520,88 @@ class LlamaChat::Impl {
       mtmd_bitmap* bitmap,
       const std::function<void(const std::string&)>& callback
   ) {
-    std::string prompt;
-    BuildPrompt(prompt);
-
     SamplingParams params;
     SetupSamplerChain(params);
 
+    // Get the chat template from the model
+    const char* tmpl = llama_model_chat_template(model.get(), nullptr);
+
+    // Format only the current (last) message, not the entire history
+    // This is how the official mtmd-cli does it
+    std::vector<llama_chat_message> allMessages;
+    std::vector<llama_chat_message> currentMessage;
+
+    // Build message arrays for chat template
+    for (size_t i = 0; i < conversationHistory.size(); i++) {
+      llama_chat_message msg = {
+          conversationHistory[i].role.c_str(),
+          conversationHistory[i].content.c_str()
+      };
+      allMessages.push_back(msg);
+      if (i == conversationHistory.size() - 1) {
+        currentMessage.push_back(msg);
+      }
+    }
+
+    // Determine if we need BOS (only for first message in conversation)
+    bool addBos = (nPast == 0);
+
+    std::string formattedPrompt;
+
+    if (addBos) {
+      // First message: format the full conversation so far
+      int32_t size = llama_chat_apply_template(
+          tmpl, allMessages.data(), allMessages.size(),
+          true, nullptr, 0);
+      if (size > 0) {
+        formattedPrompt.resize(size + 1);
+        llama_chat_apply_template(
+            tmpl, allMessages.data(), allMessages.size(),
+            true, formattedPrompt.data(), formattedPrompt.size());
+        formattedPrompt.resize(size);
+      }
+    } else {
+      // Subsequent messages: only format the new message
+      // Get the full formatted prompt
+      int32_t fullSize = llama_chat_apply_template(
+          tmpl, allMessages.data(), allMessages.size(),
+          true, nullptr, 0);
+
+      // Get the prompt without the last message
+      int32_t prevSize = 0;
+      if (allMessages.size() > 1) {
+        prevSize = llama_chat_apply_template(
+            tmpl, allMessages.data(), allMessages.size() - 1,
+            true, nullptr, 0);
+      }
+
+      // Format full prompt and extract only the new part
+      if (fullSize > 0) {
+        std::string fullPrompt;
+        fullPrompt.resize(fullSize + 1);
+        llama_chat_apply_template(
+            tmpl, allMessages.data(), allMessages.size(),
+            true, fullPrompt.data(), fullPrompt.size());
+        fullPrompt.resize(fullSize);
+
+        // Extract just the new message portion
+        if (prevSize > 0 && prevSize < fullSize) {
+          formattedPrompt = fullPrompt.substr(prevSize);
+        } else {
+          formattedPrompt = fullPrompt;
+        }
+      }
+    }
+
+    if (formattedPrompt.empty()) {
+      std::cerr << "Failed to format chat prompt" << std::endl;
+      return;
+    }
+
     // Prepare text input for mtmd_tokenize
     mtmd_input_text text;
-    text.text = prompt.c_str();
-    text.add_special = (nPast == 0);  // Add BOS if at start
+    text.text = formattedPrompt.c_str();
+    text.add_special = addBos;
     text.parse_special = true;
 
     // Create input chunks
