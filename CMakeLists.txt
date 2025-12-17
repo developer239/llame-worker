@@ -30,10 +30,10 @@ set(SOURCES
 add_library(${LIB_NAME} STATIC ${SOURCES})
 
 if(LLAMACHAT_DISABLE_LOGS)
-    target_compile_definitions(${LIB_NAME} PRIVATE LOG_DISABLE_LOGS=1)
-    target_compile_definitions(llama PRIVATE LOG_DISABLE_LOGS=1)
-    target_compile_definitions(common PRIVATE LOG_DISABLE_LOGS=1)
-    target_compile_definitions(mtmd PRIVATE LOG_DISABLE_LOGS=1)
+    target_compile_definitions(${LIB_NAME} PUBLIC LOG_DISABLE_LOGS=1)
+    target_compile_definitions(llama PUBLIC LOG_DISABLE_LOGS=1)
+    target_compile_definitions(common PUBLIC LOG_DISABLE_LOGS=1)
+    target_compile_definitions(mtmd PUBLIC LOG_DISABLE_LOGS=1)
 endif()
 
 # Link libraries - mtmd is the multimodal library
