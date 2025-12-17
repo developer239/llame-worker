@@ -23,8 +23,6 @@ struct ModelParams {
 
   std::string multiModalProjectorPath;
   bool offloadMultiModalToGPU = true;
-
-  bool verboseLogging = false;
 };
 
 struct ContextParams {
