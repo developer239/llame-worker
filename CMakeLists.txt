@@ -7,8 +7,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(LIB_NAME LlamaChat)
 
-option(LLAMACHAT_DISABLE_LOGS "Disable llama.cpp logging at compile time" ON)
-
 if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/externals/llama.cpp/CMakeLists.txt")
     message(FATAL_ERROR "The llama.cpp submodule is missing. Please run 'git submodule update --init --recursive'")
 endif()
@@ -28,13 +26,6 @@ set(SOURCES
 )
 
 add_library(${LIB_NAME} STATIC ${SOURCES})
-
-if(LLAMACHAT_DISABLE_LOGS)
-    target_compile_definitions(${LIB_NAME} PUBLIC LOG_DISABLE_LOGS=1)
-    target_compile_definitions(llama PUBLIC LOG_DISABLE_LOGS=1)
-    target_compile_definitions(common PUBLIC LOG_DISABLE_LOGS=1)
-    target_compile_definitions(mtmd PUBLIC LOG_DISABLE_LOGS=1)
-endif()
 
 # Link libraries - mtmd is the multimodal library
 target_link_libraries(${LIB_NAME} PUBLIC

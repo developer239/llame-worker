@@ -35,18 +35,6 @@ add_subdirectory(externals/llama-chat)
 target_link_libraries(<your_target> PRIVATE LlamaChat)
 ```
 
-### Build Options
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `LLAMACHAT_DISABLE_LOGS` | `ON` | Disable llama.cpp logging at compile time |
-
-By default, all llama.cpp internal logs are disabled for a clean output. To enable logs (useful for debugging):
-
-```bash
-cmake -DLLAMACHAT_DISABLE_LOGS=OFF ..
-```
-
 ## Usage
 
 ### Basic Text-Only Usage
