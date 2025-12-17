@@ -11,6 +11,10 @@ if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/externals/llama.cpp/CMakeLists.txt")
     message(FATAL_ERROR "The llama.cpp submodule is missing. Please run 'git submodule update --init --recursive'")
 endif()
 
+# Enable building common and tools (for mtmd) when using llama.cpp as subdirectory
+set(LLAMA_BUILD_COMMON ON CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_TOOLS ON CACHE BOOL "" FORCE)
+
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/externals/llama.cpp)
 
 set(SOURCES
