@@ -11,6 +11,26 @@
 #include "mtmd-helper.h"
 #include "mtmd.h"
 
+namespace {
+bool verboseLoggingEnabled = false;
+
+void LogCallback(ggml_log_level level, const char* text, void* _userData) {
+  if (verboseLoggingEnabled) {
+    switch (level) {
+      case GGML_LOG_LEVEL_ERROR:
+        std::cerr << text;
+        break;
+      case GGML_LOG_LEVEL_WARN:
+      case GGML_LOG_LEVEL_INFO:
+      case GGML_LOG_LEVEL_DEBUG:
+      default:
+        std::cout << text;
+        break;
+    }
+  }
+}
+}  // namespace
+
 struct LlamaModelDeleter {
   void operator()(llama_model* model) const {
     if (model) {
@@ -37,13 +57,19 @@ struct MtmdContextDeleter {
 
 class LlamaChat::Impl {
  public:
-  Impl() { ggml_backend_load_all(); }
+  Impl() {
+    llama_log_set(LogCallback, nullptr);
+    ggml_backend_load_all();
+  }
 
   ~Impl() noexcept = default;
 
   bool InitializeModel(
       const std::string& modelPath, const ModelParams& params
   ) {
+    verboseLoggingEnabled = params.verboseLogging;
+    llama_log_set(LogCallback, nullptr);
+
     llama_model_params modelParams = llama_model_default_params();
     modelParams.n_gpu_layers = params.gpuLayerCount;
     modelParams.vocab_only = params.vocabularyOnly;
