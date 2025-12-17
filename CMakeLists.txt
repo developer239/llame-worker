@@ -20,6 +20,9 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/externals/llama.cpp)
 set(SOURCES
         src/llama-chat.cpp
         src/llama-chat.h
+        src/ResponseStreamer.cpp
+        src/ResponseStreamer.h
+        src/LlamaChatConfig.h
 )
 
 add_library(${LIB_NAME} STATIC ${SOURCES})
