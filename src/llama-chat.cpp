@@ -132,12 +132,13 @@ class LlamaChat::Impl {
 
     mtmd_bitmap* bitmap = nullptr;
     if (image.has_value()) {
-      bitmap = mtmd_helper_bitmap_init_from_file(
-          multiModalContext.get(),
-          image->path.c_str()
+      bitmap = mtmd_bitmap_init(
+          image->width,
+          image->height,
+          image->data.data()
       );
       if (!bitmap) {
-        throw std::runtime_error("Failed to load image from " + image->path);
+        throw std::runtime_error("Failed to create bitmap from image data");
       }
 
       const char* marker = mtmd_default_marker();
@@ -412,9 +413,11 @@ class LlamaChat::Impl {
   }
 };
 
-ImageInput ImageInput::FromPath(const std::string& path) {
+ImageInput ImageInput::FromRGBData(uint32_t width, uint32_t height, const uint8_t* data) {
   ImageInput input;
-  input.path = path;
+  input.width = width;
+  input.height = height;
+  input.data.assign(data, data + (static_cast<size_t>(width) * height * 3));
   return input;
 }
 

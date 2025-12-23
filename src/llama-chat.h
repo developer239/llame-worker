@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -45,9 +46,11 @@ struct SamplingParams {
 };
 
 struct ImageInput {
-  std::string path;
+  uint32_t width;
+  uint32_t height;
+  std::vector<uint8_t> data;  // RGB format (3 bytes per pixel, size = width * height * 3)
 
-  static ImageInput FromPath(const std::string& path);
+  static ImageInput FromRGBData(uint32_t width, uint32_t height, const uint8_t* data);
 };
 
 class LlamaChat {

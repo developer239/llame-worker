@@ -81,6 +81,25 @@ int main() {
 ```cpp
 #include "llama-chat.h"
 #include <iostream>
+#include <fstream>
+#include <vector>
+
+// Helper function to load image - replace with your preferred image loading library
+// (e.g., OpenCV, stb_image, etc.)
+// Image must be in RGB format (3 bytes per pixel)
+bool loadImageRGB(const std::string& path, uint32_t& width, uint32_t& height, std::vector<uint8_t>& data) {
+    // Example using stb_image:
+    // int w, h, channels;
+    // unsigned char* img = stbi_load(path.c_str(), &w, &h, &channels, 3);
+    // if (!img) return false;
+    // width = w; height = h;
+    // data.assign(img, img + (w * h * 3));
+    // stbi_image_free(img);
+    // return true;
+    
+    // Your implementation here...
+    return false;
+}
 
 int main() {
     LlamaChat llama;
@@ -104,8 +123,17 @@ int main() {
 
     llama.SetSystemPrompt("You are a helpful AI assistant that can analyze images.");
 
-    // Prompt with an image
-    ImageInput image = ImageInput::FromPath("path/to/image.jpg");
+    // Load and preprocess image (using your preferred library like OpenCV)
+    uint32_t width, height;
+    std::vector<uint8_t> rgbData;
+    
+    if (!loadImageRGB("path/to/image.jpg", width, height, rgbData)) {
+        std::cerr << "Failed to load image." << std::endl;
+        return 1;
+    }
+    
+    // Create ImageInput from RGB data
+    ImageInput image = ImageInput::FromRGBData(width, height, rgbData.data());
     
     llama.Prompt(
         "What do you see in this image?",
@@ -196,15 +224,17 @@ Parameters for text generation sampling.
 
 ##### ImageInput
 
-Represents an image input for multimodal prompts.
+Represents an image input for multimodal prompts. The client is responsible for loading and preprocessing the image data.
 
-| Field  | Type          | Description            |
-|--------|---------------|------------------------|
-| `path` | `std::string` | Path to the image file |
+| Field    | Type                  | Description                                          |
+|----------|-----------------------|------------------------------------------------------|
+| `width`  | `uint32_t`            | Width of the image in pixels                         |
+| `height` | `uint32_t`            | Height of the image in pixels                        |
+| `data`   | `std::vector<uint8_t>` | RGB pixel data (3 bytes per pixel, size = width × height × 3) |
 
 **Static Methods:**
 
-- `static ImageInput FromPath(const std::string& path)`: Creates an ImageInput from a file path.
+- `static ImageInput FromRGBData(uint32_t width, uint32_t height, const uint8_t* data)`: Creates an ImageInput from raw RGB pixel data.
 
 ## Supported Models
 
