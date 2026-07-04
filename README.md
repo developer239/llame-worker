@@ -23,12 +23,12 @@ PATH; it is invoked as a subprocess, never linked.
 ## Installation
 
 ```bash
-git submodule add https://github.com/developer239/llama-chat externals/llama-chat
+git submodule add https://github.com/developer239/llame-worker externals/llame-worker
 git submodule update --init --recursive
 ```
 
 ```cmake
-add_subdirectory(externals/llama-chat)
+add_subdirectory(externals/llame-worker)
 target_link_libraries(<your_target> PRIVATE LlamaVision)
 ```
 

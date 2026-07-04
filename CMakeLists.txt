@@ -27,7 +27,7 @@ set(LLAMA_BUILD_SERVER OFF CACHE BOOL "" FORCE)
 # built because llama_vision links them explicitly. This also sidesteps an
 # upstream quirk at the current pin where 'llama-cli' fails to configure with
 # the server disabled (it links a server-only target). Downstream projects
-# that add_subdirectory(llama-chat) inherit this same behaviour.
+# that add_subdirectory(llame-worker) inherit this same behaviour.
 add_subdirectory(externals/llama.cpp EXCLUDE_FROM_ALL)
 
 add_library(llama_vision STATIC
