@@ -31,8 +31,8 @@ set(LLAMA_BUILD_SERVER OFF CACHE BOOL "" FORCE)
 add_subdirectory(externals/llama.cpp EXCLUDE_FROM_ALL)
 
 add_library(llameworker STATIC
-        src/llama-vision.cpp
-        src/llama-vision.h
+        src/llameworker.cpp
+        src/llameworker.h
         src/video-frames.cpp
         src/video-frames.h
 )
@@ -64,4 +64,4 @@ if (LLAMEWORKER_BUILD_EXAMPLES)
 endif ()
 
 install(TARGETS llameworker DESTINATION lib)
-install(FILES src/llama-vision.h src/video-frames.h DESTINATION include)
+install(FILES src/llameworker.h src/video-frames.h DESTINATION include)

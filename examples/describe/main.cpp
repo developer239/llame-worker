@@ -1,14 +1,14 @@
 // Minimal CLI over the library. Build with -DLLAMEWORKER_BUILD_EXAMPLES=ON.
 //
 // Usage:
-//   llama-vision-describe <model.gguf> <mmproj.gguf> [image ...]
+//   llameworker-describe <model.gguf> <mmproj.gguf> [image ...]
 //                         [--video <clip>] [-p <prompt>] [--verbose]
 
 #include <iostream>
 #include <string>
 #include <vector>
 
-#include "llama-vision.h"
+#include "llameworker.h"
 #include "video-frames.h"
 
 namespace {

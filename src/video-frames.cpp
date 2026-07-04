@@ -80,7 +80,7 @@ std::string MakeTempDirectory(std::string& error) {
   std::random_device randomDevice;
   for (int attempt = 0; attempt < 8; ++attempt) {
     std::ostringstream name;
-    name << "llama-vision-frames-" << std::hex << randomDevice()
+    name << "llameworker-frames-" << std::hex << randomDevice()
          << randomDevice();
     const fs::path directory = fs::temp_directory_path() / name.str();
     std::error_code errorCode;
