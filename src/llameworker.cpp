@@ -33,13 +33,18 @@ void initBackendsOnce() {
 }
 
 int resolveThreadCount(int requested) {
-  if (requested > 0) return requested;
+  if (requested > 0) {
+    return requested;
+  }
   const unsigned int hardware = std::thread::hardware_concurrency();
+
   return hardware > 0 ? static_cast<int>(hardware) : 4;
 }
 
 size_t countOccurrences(const std::string& text, const std::string& needle) {
-  if (needle.empty()) return 0;
+  if (needle.empty()) {
+    return 0;
+  }
 
   size_t count = 0;
   for (size_t pos = text.find(needle); pos != std::string::npos;
@@ -60,9 +65,7 @@ struct MtmdContextDeleter {
   void operator()(mtmd_context* context) const { mtmd_free(context); }
 };
 struct SamplerDeleter {
-  void operator()(llama_sampler* sampler) const {
-    llama_sampler_free(sampler);
-  }
+  void operator()(llama_sampler* sampler) const { llama_sampler_free(sampler); }
 };
 struct ChunksDeleter {
   void operator()(mtmd_input_chunks* chunks) const {
@@ -85,7 +88,9 @@ std::string insertMediaMarkers(
 ) {
   const std::string marker = mtmd_default_marker();
   const size_t present = countOccurrences(prompt, marker);
-  if (present == imageCount) return prompt;
+  if (present == imageCount) {
+    return prompt;
+  }
 
   if (present == 0) {
     std::string result;
@@ -100,14 +105,15 @@ std::string insertMediaMarkers(
 
   error = std::format(
       "prompt contains {} media marker(s) but {} image(s) were provided",
-      present, imageCount);
+      present,
+      imageCount
+  );
 
   return {};
 }
 
 SamplerPtr buildSamplerChain(const PromptParams& params) {
-  llama_sampler_chain_params chainParams =
-      llama_sampler_chain_default_params();
+  llama_sampler_chain_params chainParams = llama_sampler_chain_default_params();
   chainParams.no_perf = true;
   llama_sampler* chain = llama_sampler_chain_init(chainParams);
 
@@ -115,7 +121,11 @@ SamplerPtr buildSamplerChain(const PromptParams& params) {
     llama_sampler_chain_add(
         chain,
         llama_sampler_init_penalties(
-            kRepeatPenaltyWindow, params.repeatPenalty, 0.0f, 0.0f)
+            kRepeatPenaltyWindow,
+            params.repeatPenalty,
+            0.0f,
+            0.0f
+        )
     );
   }
 
@@ -142,17 +152,29 @@ SamplerPtr buildSamplerChain(const PromptParams& params) {
 std::string tokenToPiece(const llama_vocab* vocabulary, llama_token token) {
   std::array<char, kTokenPieceBufferSize> buffer{};
   int32_t length = llama_token_to_piece(
-      vocabulary, token, buffer.data(), static_cast<int32_t>(buffer.size()),
-      0, true);
+      vocabulary,
+      token,
+      buffer.data(),
+      static_cast<int32_t>(buffer.size()),
+      0,
+      true
+  );
   if (length >= 0) {
     return std::string(buffer.data(), static_cast<size_t>(length));
   }
 
   std::vector<char> largeBuffer(static_cast<size_t>(-length));
   length = llama_token_to_piece(
-      vocabulary, token, largeBuffer.data(),
-      static_cast<int32_t>(largeBuffer.size()), 0, true);
-  if (length < 0) return {};
+      vocabulary,
+      token,
+      largeBuffer.data(),
+      static_cast<int32_t>(largeBuffer.size()),
+      0,
+      true
+  );
+  if (length < 0) {
+    return {};
+  }
 
   return std::string(largeBuffer.data(), static_cast<size_t>(length));
 }
@@ -189,7 +211,8 @@ class LlameWorker::Impl {
     modelParams.n_gpu_layers = params.gpuLayerCount;
 
     model_.reset(
-        llama_model_load_from_file(params.modelPath.c_str(), modelParams));
+        llama_model_load_from_file(params.modelPath.c_str(), modelParams)
+    );
     if (!model_) {
       loadError_ =
           std::format("failed to load model from {}", params.modelPath);
@@ -219,12 +242,16 @@ class LlameWorker::Impl {
     mtmdParams.n_threads = threads;
 
     mtmdContext_.reset(mtmd_init_from_file(
-        params.projectorPath.c_str(), model_.get(), mtmdParams));
+        params.projectorPath.c_str(),
+        model_.get(),
+        mtmdParams
+    ));
     if (!mtmdContext_) {
       loadError_ = std::format(
           "failed to load the multimodal projector from {} "
           "(check that the mmproj file matches the model)",
-          params.projectorPath);
+          params.projectorPath
+      );
       unload();
       return false;
     }
@@ -273,12 +300,14 @@ class LlameWorker::Impl {
     bitmaps.reserve(params.imagePaths.size());
     for (const auto& path : params.imagePaths) {
       BitmapPtr bitmap(
-          mtmd_helper_bitmap_init_from_file(mtmdContext_.get(), path.c_str()));
+          mtmd_helper_bitmap_init_from_file(mtmdContext_.get(), path.c_str())
+      );
       if (!bitmap) {
         result.error = std::format(
             "failed to load or decode image: {} "
             "(WebP and JXL are not supported)",
-            path);
+            path
+        );
         return result;
       }
       bitmaps.push_back(std::move(bitmap));
@@ -293,7 +322,9 @@ class LlameWorker::Impl {
     // 2) Build the single-turn templated prompt.
     std::string userText =
         insertMediaMarkers(params.prompt, bitmaps.size(), result.error);
-    if (!result.error.empty()) return result;
+    if (!result.error.empty()) {
+      return result;
+    }
 
     const std::string& systemPrompt = params.systemPromptOverride.empty()
                                           ? loadedParams_.systemPrompt
@@ -302,15 +333,18 @@ class LlameWorker::Impl {
     std::string formatted =
         applyChatTemplate(systemPrompt, userText, result.error);
     if (formatted.empty()) {
-      if (result.error.empty()) result.error = "failed to build the prompt";
+      if (result.error.empty()) {
+        result.error = "failed to build the prompt";
+      }
+
       return result;
     }
 
     // 3) Tokenize text + images into chunks.
     mtmd_input_text textInput{};
     textInput.text = formatted.c_str();
-    textInput.add_special = true;   // fresh sequence: tokenizer adds BOS
-    textInput.parse_special = true; // template output has special tokens
+    textInput.add_special = true;    // fresh sequence: tokenizer adds BOS
+    textInput.parse_special = true;  // template output has special tokens
 
     ChunksPtr chunks(mtmd_input_chunks_init());
     if (!chunks) {
@@ -326,14 +360,15 @@ class LlameWorker::Impl {
         bitmapPtrs.size()
     );
     if (tokenizeResult == 1) {
-      result.error =
-          "media marker count does not match the number of images";
+      result.error = "media marker count does not match the number of images";
       return result;
     }
+
     if (tokenizeResult != 0) {
       result.error = std::format(
           "failed to tokenize or preprocess the input (mtmd error {})",
-          tokenizeResult);
+          tokenizeResult
+      );
       return result;
     }
 
@@ -342,11 +377,14 @@ class LlameWorker::Impl {
         static_cast<int32_t>(llama_n_ctx(context_.get()));
     result.promptTokenCount =
         static_cast<int32_t>(mtmd_helper_get_n_tokens(chunks.get()));
+
     if (result.promptTokenCount >= contextTokens) {
       result.error = std::format(
           "prompt needs {} tokens but the context holds {}; "
           "raise contextSize or send fewer/smaller images",
-          result.promptTokenCount, contextTokens);
+          result.promptTokenCount,
+          contextTokens
+      );
       return result;
     }
 
@@ -361,6 +399,7 @@ class LlameWorker::Impl {
         /*logits_last=*/true,
         &pastTokenCount
     );
+
     if (evalResult != 0) {
       result.error =
           std::format("failed to evaluate the prompt (error {})", evalResult);
@@ -418,7 +457,14 @@ class LlameWorker::Impl {
     messages.push_back({"user", userText.c_str()});
 
     const int32_t requiredSize = llama_chat_apply_template(
-        chatTemplate, messages.data(), messages.size(), true, nullptr, 0);
+        chatTemplate,
+        messages.data(),
+        messages.size(),
+        true,
+        nullptr,
+        0
+    );
+
     if (requiredSize <= 0) {
       error = "chat template application failed";
       return {};
@@ -433,10 +479,12 @@ class LlameWorker::Impl {
         formatted.data(),
         requiredSize
     );
+
     if (writtenSize <= 0) {
       error = "chat template application failed";
       return {};
     }
+
     formatted.resize(static_cast<size_t>(writtenSize));
 
     return formatted;

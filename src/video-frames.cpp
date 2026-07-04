@@ -4,7 +4,6 @@
 #include <array>
 #include <charconv>
 #include <cstdio>
-#include <cstdlib>
 #include <filesystem>
 #include <format>
 #include <random>
@@ -29,6 +28,7 @@ std::string quoteForShell(const std::string& text) {
   return "\"" + text + "\"";
 #else
   std::string quoted = "'";
+
   for (const char character : text) {
     if (character == '\'') {
       quoted += "'\\''";
@@ -37,6 +37,7 @@ std::string quoteForShell(const std::string& text) {
     }
   }
   quoted += "'";
+
   return quoted;
 #endif
 }
@@ -47,7 +48,9 @@ bool runAndCapture(const std::string& command, std::string& output) {
 #else
   FILE* pipe = popen(command.c_str(), "r");
 #endif
-  if (!pipe) return false;
+  if (!pipe) {
+    return false;
+  }
 
   std::array<char, 256> buffer{};
   while (fgets(buffer.data(), buffer.size(), pipe) != nullptr) {
@@ -67,13 +70,14 @@ bool runAndCapture(const std::string& command, std::string& output) {
 double probeDurationSeconds(
     const VideoFrameParams& params, const std::string& videoPath
 ) {
-  const std::string command =
-      quoteForShell(params.ffprobePath) +
-      " -v error -show_entries format=duration"
-      " -of default=noprint_wrappers=1:nokey=1 " +
-      quoteForShell(videoPath);
+  const std::string command = quoteForShell(params.ffprobePath) +
+                              " -v error -show_entries format=duration"
+                              " -of default=noprint_wrappers=1:nokey=1 " +
+                              quoteForShell(videoPath);
   std::string output;
-  if (!runAndCapture(command, output)) return 0.0;
+  if (!runAndCapture(command, output)) {
+    return 0.0;
+  }
 
   const char* begin = output.data();
   const char* const end = output.data() + output.size();
@@ -83,7 +87,9 @@ double probeDurationSeconds(
   }
   double duration = 0.0;
   const auto [ptr, errorCode] = std::from_chars(begin, end, duration);
-  if (errorCode != std::errc{}) return 0.0;
+  if (errorCode != std::errc{}) {
+    return 0.0;
+  }
 
   return duration;
 }
@@ -92,9 +98,11 @@ std::string makeTempDirectory(std::string& error) {
   std::random_device randomDevice;
   std::error_code lastError;
   for (int attempt = 0; attempt < kMaxTempDirAttempts; ++attempt) {
-    const std::string name =
-        std::format("llameworker-frames-{:x}{:x}", randomDevice(),
-                    randomDevice());
+    const std::string name = std::format(
+        "llameworker-frames-{:x}{:x}",
+        randomDevice(),
+        randomDevice()
+    );
     const fs::path directory = fs::temp_directory_path() / name;
     if (fs::create_directory(directory, lastError)) {
       return directory.string();
@@ -102,7 +110,8 @@ std::string makeTempDirectory(std::string& error) {
   }
   error = std::format(
       "failed to create a temporary directory for frames: {}",
-      lastError.message());
+      lastError.message()
+  );
 
   return {};
 }
@@ -125,7 +134,9 @@ VideoFrameResult extractVideoFrames(
   }
 
   result.directory = makeTempDirectory(result.error);
-  if (result.directory.empty()) return result;
+  if (result.directory.empty()) {
+    return result;
+  }
 
   // Spread frames across the whole video when the duration is known;
   // otherwise fall back to sampling from the start. The fps clamp keeps
@@ -140,16 +151,19 @@ VideoFrameResult extractVideoFrames(
   const std::string filter = std::format(
       "fps={:.6f},scale='min({},iw)':'min({},ih)'"
       ":force_original_aspect_ratio=decrease",
-      framesPerSecond, params.maxEdgePixels, params.maxEdgePixels);
+      framesPerSecond,
+      params.maxEdgePixels,
+      params.maxEdgePixels
+  );
 
   const fs::path outputPattern = fs::path(result.directory) / "frame-%04d.jpg";
   // Capture ffmpeg's own diagnostics (it writes them to stderr) so a
   // failure surfaces the real reason instead of a generic guess.
-  const std::string command =
-      quoteForShell(params.ffmpegPath) + " -v error -y -i " +
-      quoteForShell(videoPath) + " -vf " + quoteForShell(filter) +
-      " -frames:v " + std::to_string(params.maxFrames) + " " +
-      quoteForShell(outputPattern.string()) + " 2>&1";
+  const std::string command = quoteForShell(params.ffmpegPath) +
+                              " -v error -y -i " + quoteForShell(videoPath) +
+                              " -vf " + quoteForShell(filter) + " -frames:v " +
+                              std::to_string(params.maxFrames) + " " +
+                              quoteForShell(outputPattern.string()) + " 2>&1";
 
   std::string ffmpegOutput;
   if (!runAndCapture(command, ffmpegOutput)) {
@@ -183,8 +197,12 @@ VideoFrameResult extractVideoFrames(
 }
 
 void cleanupVideoFrames(const VideoFrameResult& result) {
-  if (result.directory.empty()) return;
+  if (result.directory.empty()) {
+    return;
+  }
+
   std::error_code errorCode;
+
   fs::remove_all(result.directory, errorCode);
 }
 

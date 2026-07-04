@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -17,7 +16,7 @@ struct VisionModelParams {
   std::string modelPath;      // path to the main .gguf model (required)
   std::string projectorPath;  // path to the mmproj .gguf (required)
 
-  int gpuLayerCount = 999;    // 999 = offload every layer that fits; 0 = CPU
+  int gpuLayerCount = 999;  // 999 = offload every layer that fits; 0 = CPU
   bool projectorOnGpu = true;
 
   // Context window in tokens. Each image typically costs a few hundred to
@@ -49,11 +48,11 @@ struct PromptParams {
   std::vector<std::string> imagePaths;  // absolute paths; may be empty
 
   int maxTokens = 512;
-  float temperature = 0.2f;  // low by default: factual, near-deterministic;
-                             // <= 0 switches to greedy sampling
-  int topK = 40;             // <= 0 disables
-  float topP = 0.95f;        // >= 1 disables
-  float minP = 0.05f;        // <= 0 disables
+  float temperature = 0.2f;    // low by default: factual, near-deterministic;
+                               // <= 0 switches to greedy sampling
+  int topK = 40;               // <= 0 disables
+  float topP = 0.95f;          // >= 1 disables
+  float minP = 0.05f;          // <= 0 disables
   float repeatPenalty = 1.0f;  // 1.0 disables (over the last 64 tokens)
   uint32_t seed = 0xFFFFFFFF;  // LLAMA_DEFAULT_SEED = random each call
 
@@ -66,7 +65,7 @@ struct PromptResult {
                       // before the failure
   std::string error;  // set when !ok
 
-  int32_t promptTokenCount = 0;     // text + projected image tokens
+  int32_t promptTokenCount = 0;  // text + projected image tokens
   int32_t generatedTokenCount = 0;
   bool truncated = false;  // stopped at maxTokens or the context edge
                            // instead of a natural end-of-generation token
