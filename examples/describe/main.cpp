@@ -4,30 +4,36 @@
 //   llameworker-describe <model.gguf> <mmproj.gguf> [image ...]
 //                         [--video <clip>] [-p <prompt>] [--verbose]
 
-#include <iostream>
+#include <cstdio>
+#include <print>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "llameworker.h"
 #include "video-frames.h"
 
+namespace lw = llameworker;
+
 namespace {
 
-void PrintUsage(const char* program) {
-  std::cerr << "Usage:\n"
-            << "  " << program << " <model.gguf> <mmproj.gguf> [image ...]\n"
-            << "        [--video <clip>] [-p <prompt>] [--verbose]\n";
+void printUsage(const char* program) {
+  std::println(stderr, "Usage:");
+  std::println(stderr, "  {} <model.gguf> <mmproj.gguf> [image ...]", program);
+  std::println(stderr, "        [--video <clip>] [-p <prompt>] [--verbose]");
 }
+
+void printPiece(std::string_view piece) { std::print("{}", piece); }
 
 }  // namespace
 
 int main(int argc, char** argv) {
   if (argc < 3) {
-    PrintUsage(argv[0]);
+    printUsage(argv[0]);
     return 1;
   }
 
-  VisionModelParams modelParams;
+  lw::VisionModelParams modelParams;
   modelParams.modelPath = argv[1];
   modelParams.projectorPath = argv[2];
 
@@ -48,9 +54,9 @@ int main(int argc, char** argv) {
     }
   }
 
-  LlameWorker llameworker;
-  if (!llameworker.Load(modelParams)) {
-    std::cerr << "Load failed: " << llameworker.LoadError() << std::endl;
+  lw::LlameWorker llameworker;
+  if (!llameworker.load(modelParams)) {
+    std::println(stderr, "Load failed: {}", llameworker.loadError());
     return 1;
   }
 
@@ -67,49 +73,41 @@ int main(int argc, char** argv) {
   }
 
   // When callers mix video frames with explicit image paths, the frames must
-  // stay on disk until Prompt() finishes.
-  VideoFrameResult frames;
+  // stay on disk until prompt() finishes.
+  lw::VideoFrameResult frames;
   if (!videoPath.empty() && !imagePaths.empty()) {
-    frames = ExtractVideoFrames(videoPath);
+    frames = lw::extractVideoFrames(videoPath);
     if (!frames.ok) {
-      std::cerr << "Frame extraction failed: " << frames.error << std::endl;
+      std::println(stderr, "Frame extraction failed: {}", frames.error);
       return 1;
     }
-    std::cerr << "[extracted " << frames.framePaths.size() << " frame(s)]"
-              << std::endl;
+    std::println(stderr, "[extracted {} frame(s)]", frames.framePaths.size());
   }
 
-  PromptResult result;
+  lw::PromptResult result;
   if (!videoPath.empty() && imagePaths.empty()) {
-    result = llameworker.DescribeVideo(
-        videoPath,
-        prompt,
-        {},
-        [](const std::string& piece) { std::cout << piece << std::flush; }
-    );
+    result = llameworker.describeVideo(videoPath, prompt, {}, printPiece);
   } else {
     imagePaths.insert(
         imagePaths.end(), frames.framePaths.begin(), frames.framePaths.end()
     );
-    PromptParams promptParams;
-    promptParams.prompt = prompt;
-    promptParams.imagePaths = imagePaths;
+    lw::PromptParams promptParams{
+        .prompt = prompt,
+        .imagePaths = imagePaths,
+    };
 
-    result = llameworker.Prompt(
-        promptParams,
-        [](const std::string& piece) { std::cout << piece << std::flush; }
-    );
+    result = llameworker.prompt(promptParams, printPiece);
   }
-  std::cout << std::endl;
+  std::print("\n");
 
-  CleanupVideoFrames(frames);
+  lw::cleanupVideoFrames(frames);
 
   if (!result.ok) {
-    std::cerr << "Prompt failed: " << result.error << std::endl;
+    std::println(stderr, "Prompt failed: {}", result.error);
     return 1;
   }
-  std::cerr << "[prompt tokens: " << result.promptTokenCount
-            << ", generated: " << result.generatedTokenCount
-            << (result.truncated ? ", truncated]" : "]") << std::endl;
+  std::println(
+      stderr, "[prompt tokens: {}, generated: {}{}]", result.promptTokenCount,
+      result.generatedTokenCount, result.truncated ? ", truncated" : "");
   return 0;
 }

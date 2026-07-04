@@ -4,9 +4,12 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "video-frames.h"
+
+namespace llameworker {
 
 // Parameters for loading a model. Loading is the expensive step (seconds to
 // tens of seconds); do it once per process and reuse the instance.
@@ -31,7 +34,7 @@ struct VisionModelParams {
 
   int threadCount = 0;  // 0 = use hardware concurrency
 
-  // Applied to every Prompt() unless overridden per call. May be empty.
+  // Applied to every prompt() unless overridden per call. May be empty.
   std::string systemPrompt =
       "You are a precise visual assistant. Describe exactly what is shown, "
       "concisely and factually.";
@@ -69,15 +72,15 @@ struct PromptResult {
                            // instead of a natural end-of-generation token
 };
 
-using TokenCallback = std::function<void(const std::string& piece)>;
+using TokenCallback = std::function<void(std::string_view piece)>;
 
 // A stateless single-shot engine over llama.cpp's multimodal (mtmd) API.
-// Load once, then call Prompt() many times; every call starts from an
+// Load once, then call prompt() many times; every call starts from an
 // empty KV cache and is completely independent of previous calls.
 //
 // Thread-safety: one call at a time per instance. Run it on a worker
 // thread if you need a responsive caller (this is what the Node binding
-// will do), but never call Prompt() concurrently on the same instance.
+// will do), but never call prompt() concurrently on the same instance.
 // A moved-from instance may only be destroyed or assigned to.
 class LlameWorker {
  public:
@@ -90,32 +93,32 @@ class LlameWorker {
   LlameWorker& operator=(LlameWorker&&) noexcept;
 
   // Loads the model and multimodal projector. Returns false on failure;
-  // the reason is available via LoadError(). Calling Load() again replaces
+  // the reason is available via loadError(). Calling load() again replaces
   // the previously loaded model.
-  bool Load(const VisionModelParams& params);
-  bool IsLoaded() const;
-  void Unload();
-  const std::string& LoadError() const;
+  bool load(const VisionModelParams& params);
+  bool isLoaded() const;
+  void unload();
+  const std::string& loadError() const;
 
   // One-off generation. Text-only prompts (no image paths) are fine.
   // Supported image formats are what stb_image decodes: JPEG, PNG, BMP,
   // TGA, GIF. Notably NOT WebP or JXL.
-  PromptResult Prompt(
+  PromptResult prompt(
       const PromptParams& params, const TokenCallback& onToken = nullptr
   );
 
   // Convenience for the most common case: one image in, description out.
-  PromptResult DescribeImage(
+  PromptResult describeImage(
       const std::string& imagePath,
-      const std::string& prompt = "Describe this image.",
+      std::string_view prompt = "Describe this image.",
       const TokenCallback& onToken = nullptr
   );
 
   // Convenience for one video in, description out. Extracted frames stay on
   // disk until generation finishes, then are removed before returning.
-  PromptResult DescribeVideo(
+  PromptResult describeVideo(
       const std::string& videoPath,
-      const std::string& prompt =
+      std::string_view prompt =
           "These images are frames sampled from one video, in order. "
           "Describe what happens.",
       const VideoFrameParams& frameParams = {},
@@ -127,9 +130,11 @@ class LlameWorker {
   // automatically (images first, then your text - the layout most vision
   // models expect). If it contains markers, their count must equal the
   // number of image paths.
-  static const char* MediaMarker();
+  static std::string_view mediaMarker();
 
  private:
   class Impl;
-  std::unique_ptr<Impl> pimpl;
+  std::unique_ptr<Impl> pimpl_;
 };
+
+}  // namespace llameworker

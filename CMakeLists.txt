@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 project(llameworker VERSION 2.0.0 LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -37,11 +37,13 @@ add_library(llameworker STATIC
         src/video-frames.h
 )
 
-target_compile_features(llameworker PUBLIC cxx_std_17)
+target_compile_features(llameworker PUBLIC cxx_std_23)
 
-# 'llama' transitively exports the ggml headers; 'mtmd' is the multimodal
-# library. 'common' is no longer linked: v2 uses no common_* symbols.
-target_link_libraries(llameworker PUBLIC llama mtmd)
+# 'llama' and 'mtmd' are used only inside llameworker.cpp; the pimpl keeps
+# every llama/mtmd type out of the public headers, so these stay PRIVATE and
+# do not leak onto downstream consumers. 'common' is not linked: the library
+# uses no common_* symbols.
+target_link_libraries(llameworker PRIVATE llama mtmd)
 
 target_include_directories(llameworker
         PUBLIC
@@ -51,12 +53,6 @@ target_include_directories(llameworker
         # header directory on the target.
         ${CMAKE_CURRENT_SOURCE_DIR}/externals/llama.cpp/tools/mtmd
 )
-
-# std::filesystem needs an explicit link on GCC < 9.
-if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU"
-        AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9)
-    target_link_libraries(llameworker PRIVATE stdc++fs)
-endif ()
 
 if (LLAMEWORKER_BUILD_EXAMPLES)
     add_executable(llameworker-describe examples/describe/main.cpp)

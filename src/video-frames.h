@@ -3,9 +3,11 @@
 #include <string>
 #include <vector>
 
+namespace llameworker {
+
 // Frame extraction for video files. This module knows nothing about the
 // engine: it produces image paths, which you then pass to
-// LlameWorker::Prompt() like any other images.
+// LlameWorker::prompt() like any other images.
 //
 // Runtime requirement: ffmpeg (and ideally ffprobe) installed and on PATH,
 // or pointed to via the params below.
@@ -30,11 +32,13 @@ struct VideoFrameResult {
 // duration, frames are spread evenly across the whole video; otherwise the
 // fallback samples 1 frame per second from the start.
 // The caller owns the temp directory: keep it until generation is done,
-// then remove it with CleanupVideoFrames().
-VideoFrameResult ExtractVideoFrames(
+// then remove it with cleanupVideoFrames().
+VideoFrameResult extractVideoFrames(
     const std::string& videoPath, const VideoFrameParams& params = {}
 );
 
-// Removes the temp directory created by ExtractVideoFrames. Safe to call
+// Removes the temp directory created by extractVideoFrames. Safe to call
 // on a failed or empty result.
-void CleanupVideoFrames(const VideoFrameResult& result);
+void cleanupVideoFrames(const VideoFrameResult& result);
+
+}  // namespace llameworker
