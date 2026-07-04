@@ -79,15 +79,15 @@ using TokenCallback = std::function<void(const std::string& piece)>;
 // thread if you need a responsive caller (this is what the Node binding
 // will do), but never call Prompt() concurrently on the same instance.
 // A moved-from instance may only be destroyed or assigned to.
-class LlamaVision {
+class LlameWorker {
  public:
-  LlamaVision();
-  ~LlamaVision();
+  LlameWorker();
+  ~LlameWorker();
 
-  LlamaVision(const LlamaVision&) = delete;
-  LlamaVision& operator=(const LlamaVision&) = delete;
-  LlamaVision(LlamaVision&&) noexcept;
-  LlamaVision& operator=(LlamaVision&&) noexcept;
+  LlameWorker(const LlameWorker&) = delete;
+  LlameWorker& operator=(const LlameWorker&) = delete;
+  LlameWorker(LlameWorker&&) noexcept;
+  LlameWorker& operator=(LlameWorker&&) noexcept;
 
   // Loads the model and multimodal projector. Returns false on failure;
   // the reason is available via LoadError(). Calling Load() again replaces

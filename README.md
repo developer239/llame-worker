@@ -21,7 +21,7 @@ git submodule update --init --recursive
 
 ```cmake
 add_subdirectory(externals/llame-worker)
-target_link_libraries(<your_target> PRIVATE LlamaVision)
+target_link_libraries(<your_target> PRIVATE llameworker)
 ```
 
 ## API reference

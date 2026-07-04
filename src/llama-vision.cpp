@@ -141,7 +141,7 @@ std::string TokenToPiece(const llama_vocab* vocabulary, llama_token token) {
 
 }  // namespace
 
-class LlamaVision::Impl {
+class LlameWorker::Impl {
  public:
   bool Load(const VisionModelParams& params) {
     Unload();
@@ -421,30 +421,30 @@ class LlamaVision::Impl {
 
 // ---- Public class: pure forwarding ----
 
-LlamaVision::LlamaVision() : pimpl(std::make_unique<Impl>()) {}
-LlamaVision::~LlamaVision() = default;
-LlamaVision::LlamaVision(LlamaVision&&) noexcept = default;
-LlamaVision& LlamaVision::operator=(LlamaVision&&) noexcept = default;
+LlameWorker::LlameWorker() : pimpl(std::make_unique<Impl>()) {}
+LlameWorker::~LlameWorker() = default;
+LlameWorker::LlameWorker(LlameWorker&&) noexcept = default;
+LlameWorker& LlameWorker::operator=(LlameWorker&&) noexcept = default;
 
-bool LlamaVision::Load(const VisionModelParams& params) {
+bool LlameWorker::Load(const VisionModelParams& params) {
   return pimpl->Load(params);
 }
 
-bool LlamaVision::IsLoaded() const { return pimpl->IsLoaded(); }
+bool LlameWorker::IsLoaded() const { return pimpl->IsLoaded(); }
 
-void LlamaVision::Unload() { pimpl->Unload(); }
+void LlameWorker::Unload() { pimpl->Unload(); }
 
-const std::string& LlamaVision::LoadError() const {
+const std::string& LlameWorker::LoadError() const {
   return pimpl->LoadError();
 }
 
-PromptResult LlamaVision::Prompt(
+PromptResult LlameWorker::Prompt(
     const PromptParams& params, const TokenCallback& onToken
 ) {
   return pimpl->Prompt(params, onToken);
 }
 
-PromptResult LlamaVision::DescribeImage(
+PromptResult LlameWorker::DescribeImage(
     const std::string& imagePath, const std::string& prompt,
     const TokenCallback& onToken
 ) {
@@ -454,7 +454,7 @@ PromptResult LlamaVision::DescribeImage(
   return pimpl->Prompt(params, onToken);
 }
 
-PromptResult LlamaVision::DescribeVideo(
+PromptResult LlameWorker::DescribeVideo(
     const std::string& videoPath, const std::string& prompt,
     const VideoFrameParams& frameParams, const TokenCallback& onToken
 ) {
@@ -474,4 +474,4 @@ PromptResult LlamaVision::DescribeVideo(
   return result;
 }
 
-const char* LlamaVision::MediaMarker() { return mtmd_default_marker(); }
+const char* LlameWorker::MediaMarker() { return mtmd_default_marker(); }

@@ -5,7 +5,7 @@
 
 // Frame extraction for video files. This module knows nothing about the
 // engine: it produces image paths, which you then pass to
-// LlamaVision::Prompt() like any other images.
+// LlameWorker::Prompt() like any other images.
 //
 // Runtime requirement: ffmpeg (and ideally ffprobe) installed and on PATH,
 // or pointed to via the params below.

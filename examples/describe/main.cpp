@@ -1,4 +1,4 @@
-// Minimal CLI over the library. Build with -DLLAMAVISION_BUILD_EXAMPLES=ON.
+// Minimal CLI over the library. Build with -DLLAMEWORKER_BUILD_EXAMPLES=ON.
 //
 // Usage:
 //   llama-vision-describe <model.gguf> <mmproj.gguf> [image ...]
@@ -48,9 +48,9 @@ int main(int argc, char** argv) {
     }
   }
 
-  LlamaVision llama;
-  if (!llama.Load(modelParams)) {
-    std::cerr << "Load failed: " << llama.LoadError() << std::endl;
+  LlameWorker llameworker;
+  if (!llameworker.Load(modelParams)) {
+    std::cerr << "Load failed: " << llameworker.LoadError() << std::endl;
     return 1;
   }
 
@@ -81,7 +81,7 @@ int main(int argc, char** argv) {
 
   PromptResult result;
   if (!videoPath.empty() && imagePaths.empty()) {
-    result = llama.DescribeVideo(
+    result = llameworker.DescribeVideo(
         videoPath,
         prompt,
         {},
@@ -95,7 +95,7 @@ int main(int argc, char** argv) {
     promptParams.prompt = prompt;
     promptParams.imagePaths = imagePaths;
 
-    result = llama.Prompt(
+    result = llameworker.Prompt(
         promptParams,
         [](const std::string& piece) { std::cout << piece << std::flush; }
     );
