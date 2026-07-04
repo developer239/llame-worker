@@ -94,7 +94,7 @@ std::string InsertMediaMarkers(
   return {};
 }
 
-llama_sampler* BuildSamplerChain(const GenerateParams& params) {
+llama_sampler* BuildSamplerChain(const PromptParams& params) {
   llama_sampler_chain_params chainParams =
       llama_sampler_chain_default_params();
   chainParams.no_perf = true;
@@ -231,10 +231,10 @@ class LlamaVision::Impl {
 
   const std::string& LoadError() const { return loadError; }
 
-  GenerateResult Generate(
-      const GenerateParams& params, const TokenCallback& onToken
+  PromptResult Prompt(
+      const PromptParams& params, const TokenCallback& onToken
   ) {
-    GenerateResult result;
+    PromptResult result;
     if (!IsLoaded()) {
       result.error = "no model is loaded; call Load() first";
       return result;
@@ -438,38 +438,38 @@ const std::string& LlamaVision::LoadError() const {
   return pimpl->LoadError();
 }
 
-GenerateResult LlamaVision::Generate(
-    const GenerateParams& params, const TokenCallback& onToken
+PromptResult LlamaVision::Prompt(
+    const PromptParams& params, const TokenCallback& onToken
 ) {
-  return pimpl->Generate(params, onToken);
+  return pimpl->Prompt(params, onToken);
 }
 
-GenerateResult LlamaVision::DescribeImage(
+PromptResult LlamaVision::DescribeImage(
     const std::string& imagePath, const std::string& prompt,
     const TokenCallback& onToken
 ) {
-  GenerateParams params;
+  PromptParams params;
   params.prompt = prompt;
   params.imagePaths.push_back(imagePath);
-  return pimpl->Generate(params, onToken);
+  return pimpl->Prompt(params, onToken);
 }
 
-GenerateResult LlamaVision::DescribeVideo(
+PromptResult LlamaVision::DescribeVideo(
     const std::string& videoPath, const std::string& prompt,
     const VideoFrameParams& frameParams, const TokenCallback& onToken
 ) {
   VideoFrameResult frames = ExtractVideoFrames(videoPath, frameParams);
   if (!frames.ok) {
-    GenerateResult result;
+    PromptResult result;
     result.error = frames.error;
     return result;
   }
 
-  GenerateParams params;
+  PromptParams params;
   params.prompt = prompt;
   params.imagePaths = frames.framePaths;
 
-  GenerateResult result = pimpl->Generate(params, onToken);
+  PromptResult result = pimpl->Prompt(params, onToken);
   CleanupVideoFrames(frames);
   return result;
 }

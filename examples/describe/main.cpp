@@ -67,7 +67,7 @@ int main(int argc, char** argv) {
   }
 
   // When callers mix video frames with explicit image paths, the frames must
-  // stay on disk until Generate() finishes.
+  // stay on disk until Prompt() finishes.
   VideoFrameResult frames;
   if (!videoPath.empty() && !imagePaths.empty()) {
     frames = ExtractVideoFrames(videoPath);
@@ -79,7 +79,7 @@ int main(int argc, char** argv) {
               << std::endl;
   }
 
-  GenerateResult result;
+  PromptResult result;
   if (!videoPath.empty() && imagePaths.empty()) {
     result = llama.DescribeVideo(
         videoPath,
@@ -91,12 +91,12 @@ int main(int argc, char** argv) {
     imagePaths.insert(
         imagePaths.end(), frames.framePaths.begin(), frames.framePaths.end()
     );
-    GenerateParams generateParams;
-    generateParams.prompt = prompt;
-    generateParams.imagePaths = imagePaths;
+    PromptParams promptParams;
+    promptParams.prompt = prompt;
+    promptParams.imagePaths = imagePaths;
 
-    result = llama.Generate(
-        generateParams,
+    result = llama.Prompt(
+        promptParams,
         [](const std::string& piece) { std::cout << piece << std::flush; }
     );
   }
@@ -105,7 +105,7 @@ int main(int argc, char** argv) {
   CleanupVideoFrames(frames);
 
   if (!result.ok) {
-    std::cerr << "Generate failed: " << result.error << std::endl;
+    std::cerr << "Prompt failed: " << result.error << std::endl;
     return 1;
   }
   std::cerr << "[prompt tokens: " << result.promptTokenCount

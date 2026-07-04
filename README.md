@@ -40,7 +40,7 @@ target_link_libraries(<your_target> PRIVATE LlamaVision)
 | `systemPrompt` | factual default | Applied to every call unless overridden. |
 | `verbose` | `false` | `true` re-enables llama.cpp logging (process-global). |
 
-### `GenerateParams` - per call
+### `PromptParams` - per call
 
 | Field | Default | Description |
 |---|---|---|
@@ -53,7 +53,7 @@ target_link_libraries(<your_target> PRIVATE LlamaVision)
 | `seed` | random | Fix for reproducible output. |
 | `systemPromptOverride` | `""` | Empty = use the load-time system prompt. |
 
-`Generate` returns `GenerateResult { ok, text, error, promptTokenCount,
+`Prompt` returns `PromptResult { ok, text, error, promptTokenCount,
 generatedTokenCount, truncated }`. `truncated` means generation stopped at
 `maxTokens` or the context edge rather than a natural stop token.
 
@@ -65,7 +65,7 @@ prompt parameter is optional and defaults to `Describe this image.`.
 `DescribeVideo(videoPath, prompt, frameParams, onToken)` extracts frames with
 ffmpeg, sends the frames through the same image generation path, and removes the
 temporary frame directory after generation finishes. The prompt parameter is
-optional and defaults to a short video-summary prompt. Use `Generate()` directly
+optional and defaults to a short video-summary prompt. Use `Prompt()` directly
 when you need multiple videos or a mix of manually ordered images and frames.
 
 ## License

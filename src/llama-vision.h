@@ -31,7 +31,7 @@ struct VisionModelParams {
 
   int threadCount = 0;  // 0 = use hardware concurrency
 
-  // Applied to every Generate() unless overridden per call. May be empty.
+  // Applied to every Prompt() unless overridden per call. May be empty.
   std::string systemPrompt =
       "You are a precise visual assistant. Describe exactly what is shown, "
       "concisely and factually.";
@@ -41,7 +41,7 @@ struct VisionModelParams {
 };
 
 // Parameters for a single, independent generation.
-struct GenerateParams {
+struct PromptParams {
   std::string prompt;
   std::vector<std::string> imagePaths;  // absolute paths; may be empty
 
@@ -57,7 +57,7 @@ struct GenerateParams {
   std::string systemPromptOverride;  // empty = use the load-time prompt
 };
 
-struct GenerateResult {
+struct PromptResult {
   bool ok = false;
   std::string text;   // the response; on error, whatever was generated
                       // before the failure
@@ -72,12 +72,12 @@ struct GenerateResult {
 using TokenCallback = std::function<void(const std::string& piece)>;
 
 // A stateless single-shot engine over llama.cpp's multimodal (mtmd) API.
-// Load once, then call Generate() many times; every call starts from an
+// Load once, then call Prompt() many times; every call starts from an
 // empty KV cache and is completely independent of previous calls.
 //
 // Thread-safety: one call at a time per instance. Run it on a worker
 // thread if you need a responsive caller (this is what the Node binding
-// will do), but never call Generate() concurrently on the same instance.
+// will do), but never call Prompt() concurrently on the same instance.
 // A moved-from instance may only be destroyed or assigned to.
 class LlamaVision {
  public:
@@ -100,12 +100,12 @@ class LlamaVision {
   // One-off generation. Text-only prompts (no image paths) are fine.
   // Supported image formats are what stb_image decodes: JPEG, PNG, BMP,
   // TGA, GIF. Notably NOT WebP or JXL.
-  GenerateResult Generate(
-      const GenerateParams& params, const TokenCallback& onToken = nullptr
+  PromptResult Prompt(
+      const PromptParams& params, const TokenCallback& onToken = nullptr
   );
 
   // Convenience for the most common case: one image in, description out.
-  GenerateResult DescribeImage(
+  PromptResult DescribeImage(
       const std::string& imagePath,
       const std::string& prompt = "Describe this image.",
       const TokenCallback& onToken = nullptr
@@ -113,7 +113,7 @@ class LlamaVision {
 
   // Convenience for one video in, description out. Extracted frames stay on
   // disk until generation finishes, then are removed before returning.
-  GenerateResult DescribeVideo(
+  PromptResult DescribeVideo(
       const std::string& videoPath,
       const std::string& prompt =
           "These images are frames sampled from one video, in order. "
