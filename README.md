@@ -1,249 +1,169 @@
-# LlamaChat 🦙🦙🦙
+# LlamaVision 🦙👁
 
-LlamaChat is a C++ library designed for running **multimodal** language models using
-the [llama.cpp](https://github.com/ggerganov/llama.cpp) framework. It provides an easy-to-use interface for loading
-models, querying them with text and images, and streaming responses in C++ applications.
+A small C++ library for **one-off multimodal prompts** against local GGUF
+models, built on [llama.cpp](https://github.com/ggerganov/llama.cpp)'s
+multimodal (mtmd) interface. Load a vision model once, then hand it an
+image path (or several, or sampled video frames) plus a prompt, and stream
+back the answer. No conversation state, no server, no OpenCV.
 
-> **Note:** This library exclusively supports multimodal (vision-capable) models. A multimodal projector file is
-> required for initialization.
+Designed as the local-inference core for CLI tools, MCP servers, and Node
+bindings: "one-off" describes the call, not the process - keep the instance
+alive and the multi-second model load is paid exactly once.
 
-**Supported Systems:**
+**Supported systems:** macOS, Linux, Windows.
 
-- MacOS
-- Windows
-- Linux
+## Requirements
+
+You need a vision-capable GGUF model **and** its matching multimodal
+projector (`mmproj-*.gguf`) - for example `gemma-3-4b-it` plus
+`mmproj-model-f16.gguf` from the ggml-org repositories on Hugging Face.
+For video, `ffmpeg` (ideally with `ffprobe`) must be installed and on
+PATH; it is invoked as a subprocess, never linked.
 
 ## Installation
 
-### Add LlamaChat as a Submodule
-
-First, add this library as a submodule in your project:
-
 ```bash
-$ git submodule add https://github.com/developer239/llama-chat externals/llama-chat
+git submodule add https://github.com/developer239/llama-chat externals/llama-chat
+git submodule update --init --recursive
 ```
-
-Load the module's dependencies:
-
-```bash
-$ git submodule update --init --recursive
-```
-
-### Update Your CMake
-
-In your project's `CMakeLists.txt`, add the following lines to include and link the LlamaChat library:
 
 ```cmake
 add_subdirectory(externals/llama-chat)
-target_link_libraries(<your_target> PRIVATE LlamaChat)
+target_link_libraries(<your_target> PRIVATE LlamaVision)
 ```
 
 ## Usage
 
-### Basic Text-Only Usage
+### Describe an image
 
 ```cpp
-#include "llama-chat.h"
 #include <iostream>
 
+#include "llama-vision.h"
+
 int main() {
-    LlamaChat llama;
-    
-    ModelParams modelParams;
-    modelParams.gpuLayerCount = 32;
-    modelParams.multiModalProjectorPath = "path/to/mmproj.gguf";
-    
-    if (!llama.InitializeModel("path/to/model.gguf", modelParams)) {
-        std::cerr << "Failed to initialize the model." << std::endl;
-        return 1;
-    }
-    
-    ContextParams contextParams;
-    contextParams.contextSize = 4096;
-    
-    if (!llama.InitializeContext(contextParams)) {
-        std::cerr << "Failed to initialize the context." << std::endl;
-        return 1;
-    }
+  LlamaVision llama;
 
-    llama.SetSystemPrompt("You are a helpful AI assistant.");
+  VisionModelParams params;
+  params.modelPath = "models/gemma-3-4b-it-f16.gguf";
+  params.projectorPath = "models/mmproj-model-f16.gguf";
+  if (!llama.Load(params)) {
+    std::cerr << llama.LoadError() << std::endl;
+    return 1;
+  }
 
-    llama.Prompt("How do I write hello world in C++?", [](const std::string& piece) {
-        std::cout << piece << std::flush;
-    });
-
-    return 0;
+  auto result = llama.DescribeImage("/absolute/path/to/screenshot.png");
+  if (!result.ok) {
+    std::cerr << result.error << std::endl;
+    return 1;
+  }
+  std::cout << result.text << std::endl;
+  return 0;
 }
 ```
 
-### Multimodal Usage (Text + Image)
+### Streaming, multiple images, custom prompts
 
 ```cpp
-#include "llama-chat.h"
-#include <iostream>
-#include <fstream>
-#include <vector>
+GenerateParams request;
+request.prompt = "What changed between these two screenshots?";
+request.imagePaths = {"/tmp/before.png", "/tmp/after.png"};
+request.maxTokens = 300;
 
-// Helper function to load image - replace with your preferred image loading library
-// (e.g., OpenCV, stb_image, etc.)
-// Image must be in RGB format (3 bytes per pixel)
-bool loadImageRGB(const std::string& path, uint32_t& width, uint32_t& height, std::vector<uint8_t>& data) {
-    // Example using stb_image:
-    // int w, h, channels;
-    // unsigned char* img = stbi_load(path.c_str(), &w, &h, &channels, 3);
-    // if (!img) return false;
-    // width = w; height = h;
-    // data.assign(img, img + (w * h * 3));
-    // stbi_image_free(img);
-    // return true;
-    
-    // Your implementation here...
-    return false;
-}
+auto result = llama.Generate(request, [](const std::string& piece) {
+  std::cout << piece << std::flush;
+});
+```
 
-int main() {
-    LlamaChat llama;
-    
-    ModelParams modelParams;
-    modelParams.gpuLayerCount = 32;
-    modelParams.multiModalProjectorPath = "path/to/mmproj.gguf";
-    
-    if (!llama.InitializeModel("path/to/model.gguf", modelParams)) {
-        std::cerr << "Failed to initialize the model." << std::endl;
-        return 1;
-    }
-    
-    ContextParams contextParams;
-    contextParams.contextSize = 4096;
-    
-    if (!llama.InitializeContext(contextParams)) {
-        std::cerr << "Failed to initialize the context." << std::endl;
-        return 1;
-    }
+Text-only prompts work too - leave `imagePaths` empty and the library is a
+plain local LLM.
 
-    llama.SetSystemPrompt("You are a helpful AI assistant that can analyze images.");
+### Summarize a video (frame sampling)
 
-    // Load and preprocess image (using your preferred library like OpenCV)
-    uint32_t width, height;
-    std::vector<uint8_t> rgbData;
-    
-    if (!loadImageRGB("path/to/image.jpg", width, height, rgbData)) {
-        std::cerr << "Failed to load image." << std::endl;
-        return 1;
-    }
-    
-    // Create ImageInput from RGB data
-    ImageInput image = ImageInput::FromRGBData(width, height, rgbData.data());
-    
-    llama.Prompt(
-        "What do you see in this image?",
-        [](const std::string& piece) {
-            std::cout << piece << std::flush;
-        },
-        image  // Optional image parameter
-    );
+```cpp
+#include "video-frames.h"
 
-    return 0;
+auto frames = ExtractVideoFrames("/absolute/path/to/clip.mp4");
+if (frames.ok) {
+  GenerateParams request;
+  request.prompt =
+      "These images are frames sampled from one video, in order. "
+      "Summarize what happens.";
+  request.imagePaths = frames.framePaths;
+
+  auto result = llama.Generate(request);
+  CleanupVideoFrames(frames);  // after generation - frames are read inside it
+
+  std::cout << result.text << std::endl;
 }
 ```
 
-### Streaming Responses
+This gives keyframe-level understanding (screen recordings, clip gist),
+not true motion reasoning. Each frame costs a few hundred prompt tokens
+once projected; `GenerateResult.promptTokenCount` shows what a request
+actually cost, and `VideoFrameParams.maxFrames` plus
+`VisionModelParams.contextSize` are the knobs that trade coverage for
+context.
 
-The `Prompt` method implements streaming responses by providing a callback function. This is useful for long outputs
-where you want to display text as it's generated.
+## API reference
 
-## API Reference
+### `VisionModelParams` - load once
 
-### LlamaChat Class
+| Field | Default | Description |
+|---|---|---|
+| `modelPath` | - | Main `.gguf` model. Required. |
+| `projectorPath` | - | `mmproj` `.gguf`. Required. |
+| `gpuLayerCount` | `999` | Offload everything that fits; `0` = CPU only. |
+| `projectorOnGpu` | `true` | Run image encoding on the GPU. |
+| `contextSize` | `4096` | Raise for multi-image or video prompts. |
+| `batchSize` | `2048` | Also the micro-batch. Must exceed the per-image token count for models with non-causal image attention. |
+| `threadCount` | `0` | `0` = hardware concurrency. |
+| `systemPrompt` | factual default | Applied to every call unless overridden. |
+| `verbose` | `false` | `true` re-enables llama.cpp logging (process-global). |
 
-The `LlamaChat` class provides methods to interact with multimodal language models loaded through llama.cpp.
+### `GenerateParams` - per call
 
-#### Public Methods
+| Field | Default | Description |
+|---|---|---|
+| `prompt` | - | Plain text; may contain media markers. |
+| `imagePaths` | `{}` | Absolute paths. JPEG/PNG/BMP/TGA/GIF (stb_image); **WebP and JXL are not supported**. |
+| `maxTokens` | `512` | Generation cap. |
+| `temperature` | `0.2` | `<= 0` switches to greedy sampling. |
+| `topK` / `topP` / `minP` | `40` / `0.95` / `0.05` | Standard nucleus sampling stack. |
+| `repeatPenalty` | `1.0` | `1.0` = disabled (window: last 64 tokens). |
+| `seed` | random | Fix for reproducible output. |
+| `systemPromptOverride` | `""` | Empty = use the load-time system prompt. |
 
-- `LlamaChat()`: Constructor. Initializes the LlamaChat object.
-- `~LlamaChat()`: Destructor. Cleans up resources.
-- `bool InitializeModel(const std::string& modelPath, const ModelParams& params)`: Initializes the model with the
-  specified path and parameters.
-- `bool InitializeContext(const ContextParams& params)`: Initializes the context with the specified parameters. Throws
-  if multimodal projector is not configured or doesn't support vision.
-- `void SetSystemPrompt(const std::string& systemPrompt)`: Sets the system prompt for the conversation.
-- `void ResetConversation()`: Resets the conversation history and context.
--
-`void Prompt(const std::string& userMessage, const std::function<void(const std::string&)>& callback, const std::optional<ImageInput>& image = std::nullopt)`:
-Processes the user message (with optional image) and streams the response.
+`Generate` returns `GenerateResult { ok, text, error, promptTokenCount,
+generatedTokenCount, truncated }`. `truncated` means generation stopped at
+`maxTokens` or the context edge rather than a natural stop token.
 
-#### Structs
+### Media markers
 
-##### LlamaToken
+By default images are placed before your text (what most vision models
+expect). To position them yourself, write `LlamaVision::MediaMarker()`
+(literally `<__media__>`) into the prompt - one marker per image, in order.
 
-Represents a token in the model's vocabulary.
+## Design notes
 
-| Field     | Type  | Description                        |
-|-----------|-------|------------------------------------|
-| `tokenId` | `int` | The unique identifier of the token |
+Every `Generate` starts from a cleared KV cache: no history, no cross-call
+state, no cache-position bookkeeping. This is deliberate - multi-turn chat
+can be layered on top later without touching the engine.
 
-##### ModelParams
+One call at a time per instance: llama.cpp's multimodal evaluation is not
+thread-safe. Run generation on a worker thread if the caller must stay
+responsive (this is exactly what a Node binding or MCP server should do),
+but never call `Generate` concurrently on the same instance.
 
-Parameters for model initialization.
+## Troubleshooting
 
-| Field                     | Type          | Default | Description                                                  |
-|---------------------------|---------------|---------|--------------------------------------------------------------|
-| `gpuLayerCount`           | `int`         | `0`     | Number of layers to offload to GPU. Set to 0 for CPU-only    |
-| `vocabularyOnly`          | `bool`        | `false` | Only load the vocabulary, no weights                         |
-| `useMemoryMapping`        | `bool`        | `true`  | Use memory mapping for faster loading                        |
-| `useModelLock`            | `bool`        | `false` | Force system to keep model in RAM                            |
-| `multiModalProjectorPath` | `std::string` | `""`    | **Required.** Path to the multimodal projector (mmproj) file |
-| `offloadMultiModalToGPU`  | `bool`        | `true`  | Whether to offload multimodal processing to GPU              |
-
-##### ContextParams
-
-Parameters for context initialization.
-
-| Field         | Type     | Default | Description                              |
-|---------------|----------|---------|------------------------------------------|
-| `contextSize` | `size_t` | `4096`  | Size of the context window (in tokens)   |
-| `threadCount` | `int`    | `6`     | Number of threads to use for computation |
-| `batchSize`   | `int`    | `512`   | Number of tokens to process in parallel  |
-
-##### SamplingParams
-
-Parameters for text generation sampling.
-
-| Field                 | Type                      | Default      | Description                                          |
-|-----------------------|---------------------------|--------------|------------------------------------------------------|
-| `maxTokens`           | `size_t`                  | `1000`       | Maximum number of tokens to generate                 |
-| `temperature`         | `float`                   | `1.0`        | Controls randomness in generation                    |
-| `topK`                | `int32_t`                 | `45`         | Limits sampling to the k most likely tokens          |
-| `topP`                | `float`                   | `0.95`       | Limits sampling to a cumulative probability          |
-| `repeatPenalty`       | `float`                   | `1.0`        | Penalty for repeating tokens (1.0 = disabled)        |
-| `frequencyPenalty`    | `float`                   | `1.0`        | Penalty based on token frequency in generated text   |
-| `presencePenalty`     | `float`                   | `0.0`        | Penalty for tokens already present in generated text |
-| `penaltyLastN`        | `int`                     | `64`         | Number of previous tokens to consider for penalties  |
-| `seed`                | `unsigned int`            | `0xFFFFFFFF` | Random seed for sampling (default = random)          |
-| `repeatPenaltyTokens` | `std::vector<LlamaToken>` | `{}`         | Specific tokens to consider for repeat penalty       |
-
-##### ImageInput
-
-Represents an image input for multimodal prompts. The client is responsible for loading and preprocessing the image data.
-
-| Field    | Type                  | Description                                          |
-|----------|-----------------------|------------------------------------------------------|
-| `width`  | `uint32_t`            | Width of the image in pixels                         |
-| `height` | `uint32_t`            | Height of the image in pixels                        |
-| `data`   | `std::vector<uint8_t>` | RGB pixel data (3 bytes per pixel, size = width × height × 3) |
-
-**Static Methods:**
-
-- `static ImageInput FromRGBData(uint32_t width, uint32_t height, const uint8_t* data)`: Creates an ImageInput from raw RGB pixel data.
-
-## Supported Models
-
-This library requires multimodal models with vision support. Compatible models include:
-
-- LLaVA models
-- Other vision-language models supported by llama.cpp's mtmd (multimodal) interface
-
-You need both the main model file (`.gguf`) and the corresponding multimodal projector file (`mmproj-*.gguf`).
+"failed to load the multimodal projector" usually means the `mmproj` does
+not match the model (embedding-size mismatch). "failed to load or decode
+image" on a file that exists is usually WebP or JXL. A prompt-too-large
+error reports the exact token count - raise `contextSize` or send fewer or
+smaller images. A crash mentioning `n_ubatch >= n_tokens` means
+`batchSize` is smaller than one image's token count on a model with
+non-causal image attention - raise it.
 
 ## License
 
