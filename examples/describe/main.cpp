@@ -54,10 +54,22 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  // Video frames must stay on disk until generation finishes: the engine
-  // reads the image files inside Generate().
+  if (prompt.empty()) {
+    if (imagePaths.empty() && videoPath.empty()) {
+      prompt = "Say hello.";
+    } else if (!videoPath.empty()) {
+      prompt =
+          "These images are frames sampled from one video, in order. "
+          "Describe what happens.";
+    } else {
+      prompt = "Describe this image.";
+    }
+  }
+
+  // When callers mix video frames with explicit image paths, the frames must
+  // stay on disk until Generate() finishes.
   VideoFrameResult frames;
-  if (!videoPath.empty()) {
+  if (!videoPath.empty() && !imagePaths.empty()) {
     frames = ExtractVideoFrames(videoPath);
     if (!frames.ok) {
       std::cerr << "Frame extraction failed: " << frames.error << std::endl;
@@ -65,27 +77,29 @@ int main(int argc, char** argv) {
     }
     std::cerr << "[extracted " << frames.framePaths.size() << " frame(s)]"
               << std::endl;
+  }
+
+  GenerateResult result;
+  if (!videoPath.empty() && imagePaths.empty()) {
+    result = llama.DescribeVideo(
+        videoPath,
+        prompt,
+        {},
+        [](const std::string& piece) { std::cout << piece << std::flush; }
+    );
+  } else {
     imagePaths.insert(
         imagePaths.end(), frames.framePaths.begin(), frames.framePaths.end()
     );
-    if (prompt.empty()) {
-      prompt =
-          "These images are frames sampled from one video, in order. "
-          "Describe what happens.";
-    }
-  }
-  if (prompt.empty()) {
-    prompt = imagePaths.empty() ? "Say hello." : "Describe this image.";
-  }
+    GenerateParams generateParams;
+    generateParams.prompt = prompt;
+    generateParams.imagePaths = imagePaths;
 
-  GenerateParams generateParams;
-  generateParams.prompt = prompt;
-  generateParams.imagePaths = imagePaths;
-
-  GenerateResult result = llama.Generate(
-      generateParams,
-      [](const std::string& piece) { std::cout << piece << std::flush; }
-  );
+    result = llama.Generate(
+        generateParams,
+        [](const std::string& piece) { std::cout << piece << std::flush; }
+    );
+  }
   std::cout << std::endl;
 
   CleanupVideoFrames(frames);

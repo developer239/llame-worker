@@ -454,4 +454,24 @@ GenerateResult LlamaVision::DescribeImage(
   return pimpl->Generate(params, onToken);
 }
 
+GenerateResult LlamaVision::DescribeVideo(
+    const std::string& videoPath, const std::string& prompt,
+    const VideoFrameParams& frameParams, const TokenCallback& onToken
+) {
+  VideoFrameResult frames = ExtractVideoFrames(videoPath, frameParams);
+  if (!frames.ok) {
+    GenerateResult result;
+    result.error = frames.error;
+    return result;
+  }
+
+  GenerateParams params;
+  params.prompt = prompt;
+  params.imagePaths = frames.framePaths;
+
+  GenerateResult result = pimpl->Generate(params, onToken);
+  CleanupVideoFrames(frames);
+  return result;
+}
+
 const char* LlamaVision::MediaMarker() { return mtmd_default_marker(); }

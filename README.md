@@ -57,6 +57,17 @@ target_link_libraries(<your_target> PRIVATE LlamaVision)
 generatedTokenCount, truncated }`. `truncated` means generation stopped at
 `maxTokens` or the context edge rather than a natural stop token.
 
+### Convenience helpers
+
+`DescribeImage(imagePath, prompt, onToken)` is the single-image shortcut. The
+prompt parameter is optional and defaults to `Describe this image.`.
+
+`DescribeVideo(videoPath, prompt, frameParams, onToken)` extracts frames with
+ffmpeg, sends the frames through the same image generation path, and removes the
+temporary frame directory after generation finishes. The prompt parameter is
+optional and defaults to a short video-summary prompt. Use `Generate()` directly
+when you need multiple videos or a mix of manually ordered images and frames.
+
 ## License
 
 See the LICENSE file for details.

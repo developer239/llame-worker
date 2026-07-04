@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include "video-frames.h"
+
 // Parameters for loading a model. Loading is the expensive step (seconds to
 // tens of seconds); do it once per process and reuse the instance.
 struct VisionModelParams {
@@ -106,6 +108,17 @@ class LlamaVision {
   GenerateResult DescribeImage(
       const std::string& imagePath,
       const std::string& prompt = "Describe this image.",
+      const TokenCallback& onToken = nullptr
+  );
+
+  // Convenience for one video in, description out. Extracted frames stay on
+  // disk until generation finishes, then are removed before returning.
+  GenerateResult DescribeVideo(
+      const std::string& videoPath,
+      const std::string& prompt =
+          "These images are frames sampled from one video, in order. "
+          "Describe what happens.",
+      const VideoFrameParams& frameParams = {},
       const TokenCallback& onToken = nullptr
   );
 
