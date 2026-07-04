@@ -40,11 +40,13 @@ int resolveThreadCount(int requested) {
 
 size_t countOccurrences(const std::string& text, const std::string& needle) {
   if (needle.empty()) return 0;
+
   size_t count = 0;
   for (size_t pos = text.find(needle); pos != std::string::npos;
        pos = text.find(needle, pos + needle.size())) {
     ++count;
   }
+
   return count;
 }
 
@@ -99,6 +101,7 @@ std::string insertMediaMarkers(
   error = std::format(
       "prompt contains {} media marker(s) but {} image(s) were provided",
       present, imageCount);
+
   return {};
 }
 
@@ -132,6 +135,7 @@ SamplerPtr buildSamplerChain(const PromptParams& params) {
   }
   llama_sampler_chain_add(chain, llama_sampler_init_temp(params.temperature));
   llama_sampler_chain_add(chain, llama_sampler_init_dist(params.seed));
+
   return SamplerPtr(chain);
 }
 
@@ -149,6 +153,7 @@ std::string tokenToPiece(const llama_vocab* vocabulary, llama_token token) {
       vocabulary, token, largeBuffer.data(),
       static_cast<int32_t>(largeBuffer.size()), 0, true);
   if (length < 0) return {};
+
   return std::string(largeBuffer.data(), static_cast<size_t>(length));
 }
 
@@ -231,6 +236,7 @@ class LlameWorker::Impl {
     }
 
     loadedParams_ = params;
+
     return true;
   }
 
@@ -391,6 +397,7 @@ class LlameWorker::Impl {
     }
 
     result.ok = true;
+
     return result;
   }
 
@@ -431,6 +438,7 @@ class LlameWorker::Impl {
       return {};
     }
     formatted.resize(static_cast<size_t>(writtenSize));
+
     return formatted;
   }
 
@@ -495,6 +503,7 @@ PromptResult LlameWorker::describeVideo(
 
   PromptResult result = pimpl_->prompt(params, onToken);
   cleanupVideoFrames(frames);
+
   return result;
 }
 

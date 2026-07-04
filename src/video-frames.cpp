@@ -84,6 +84,7 @@ double probeDurationSeconds(
   double duration = 0.0;
   const auto [ptr, errorCode] = std::from_chars(begin, end, duration);
   if (errorCode != std::errc{}) return 0.0;
+
   return duration;
 }
 
@@ -102,6 +103,7 @@ std::string makeTempDirectory(std::string& error) {
   error = std::format(
       "failed to create a temporary directory for frames: {}",
       lastError.message());
+
   return {};
 }
 
@@ -176,6 +178,7 @@ VideoFrameResult extractVideoFrames(
 
   result.framePaths = std::move(frames);
   result.ok = true;
+
   return result;
 }
 
